@@ -1,4 +1,4 @@
-module github.com/k8snetworkplumbingwg/net-attach-def-admission-controller
+module github.com/nokia/net-attach-def-admission-controller
 
 go 1.12
 
