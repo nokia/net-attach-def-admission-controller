@@ -153,6 +153,12 @@ func ShouldTriggerTopoAction(nad *netattachdef.NetworkAttachmentDefinition) (Net
 		if !ok || len(network) == 0 {
 			return netConf, false, nil
 		}
+		if netConf.Vlan < 1 || netConf.Vlan > 4095 {
+			return netConf, false, fmt.Errorf("Nokia Proprietary IPVLAN vlan field has invalid value. Valid range 1..4095")
+		}
+		if !strings.HasPrefix(netConf.Master, "tenant.") && !strings.HasPrefix(netConf.Master, "provider.") {
+			return netConf, false, fmt.Errorf("Nokia Proprietary IPVLAN master field has invalid value. Valid value after mutation is tenant.vlan or provider.vlan")
+		}
 		return netConf, true, nil
 	}
 	if netConf.Type == "sriov" {

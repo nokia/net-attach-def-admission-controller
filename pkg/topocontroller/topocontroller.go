@@ -201,15 +201,19 @@ func (c *TopologyController) handleNetAttachDefAddEvent(obj interface{}) {
 	if netConf.Type == "ipvlan" {
 		numUsers = datatypes.AddToVlanMap(c.podInfo.VlanMap, namespace+"/"+name, netConf.Master)
 		klog.Infof("IPVLAN vlan interface %s has %d users", netConf.Master, numUsers)
+		if numUsers > 1 {
+			return
+		}
 	}
-	if netConf.Type == "sriov" {
+	if netConf.Type == "sriov" && netConf.Vlan > 0 {
 		numUsers = datatypes.AddToVlanMap(c.podInfo.SriovVlanMap, namespace+"/"+name, netConf.Master)
 		klog.Infof("SIROV vlan interface %s has %d users", netConf.Master, numUsers)
+		if numUsers > 1 {
+			return
+		}
 	}
-	if numUsers == 1 {
-		workItem := WorkItem{action: datatypes.CreateAttach, newNad: nad}
-		c.workqueue.Add(workItem)
-	}
+	workItem := WorkItem{action: datatypes.CreateAttach, newNad: nad}
+	c.workqueue.Add(workItem)
 }
 
 func (c *TopologyController) handleNetAttachDefDeleteEvent(obj interface{}) {
@@ -235,7 +239,7 @@ func (c *TopologyController) handleNetAttachDefDeleteEvent(obj interface{}) {
 		numUsers = datatypes.DelFromVlanMap(c.podInfo.VlanMap, namespace+"/"+name, netConf.Master)
 		klog.Infof("IPVLAN vlan interface %s has %d users", netConf.Master, numUsers)
 	}
-	if netConf.Type == "sriov" {
+	if netConf.Type == "sriov" && netConf.Vlan > 0 {
 		numUsers = datatypes.DelFromVlanMap(c.podInfo.SriovVlanMap, namespace+"/"+name, netConf.Master)
 		klog.Infof("SRIOV vlan interface %s has %d users", netConf.Master, numUsers)
 	}
@@ -277,10 +281,16 @@ func (c *TopologyController) handleNetAttachDefUpdateEvent(oldObj, newObj interf
 		if netConf.Type == "ipvlan" {
 			numUsers = datatypes.AddToVlanMap(c.podInfo.VlanMap, namespace+"/"+name, netConf.Master)
 			klog.Infof("IPVLAN vlan interface %s has %d users", netConf.Master, numUsers)
+			if numUsers > 1 {
+				return
+			}
 		}
-		if netConf.Type == "sriov" {
+		if netConf.Type == "sriov" && netConf.Vlan > 0 {
 			numUsers = datatypes.AddToVlanMap(c.podInfo.SriovVlanMap, namespace+"/"+name, netConf.Master)
 			klog.Infof("SRIOV vlan interface %s has %d users", netConf.Master, numUsers)
+			if numUsers > 1 {
+				return
+			}
 		}
 	}
 	workItem := WorkItem{action: updateAction, oldNad: oldNad, newNad: newNad}

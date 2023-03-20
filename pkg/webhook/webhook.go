@@ -436,6 +436,11 @@ func validateForFabricOperator(operation v1beta1.Operation, oldNad, netAttachDef
 		}
 	}
 
+	// Ignore SRIOV untagged vlan for vlan sharing
+	if thisConf.Type == "sriov" && thisConf.Vlan == 0 {
+		return nil
+	}
+
 	// Check NAD for vlan sharing
 	name := netAttachDef.ObjectMeta.Name
 	namespace := netAttachDef.ObjectMeta.Namespace
