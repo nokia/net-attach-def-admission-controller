@@ -418,13 +418,30 @@ func validateForFabricOperator(operation v1beta1.Operation, oldNad, netAttachDef
 		return nil
 	}
 
+	// Check NAD for topology action
+	var thisConf datatypes.NetConf
+	var err error
+	if operation == "CREATE" {
+		thisConf, _, err = datatypes.ShouldTriggerTopoAction(&netAttachDef)
+		if err != nil {
+			return err
+		}
+
+	} else {
+		if operation == "UPDATE" {
+			_, thisConf, err = datatypes.ShouldTriggerTopoUpdate(&oldNad, &netAttachDef)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
 	// Check NAD for vlan sharing
 	name := netAttachDef.ObjectMeta.Name
 	namespace := netAttachDef.ObjectMeta.Namespace
 	ns, _ := netAttachDef.GetAnnotations()[datatypes.NodeSelectorKey]
 	project, _ := netAttachDef.GetAnnotations()[datatypes.ExtProjectIDKey]
 	network, _ := netAttachDef.GetAnnotations()[datatypes.ExtNetworkIDKey]
-	netConf, _ := isVlanOperatorRequired(netAttachDef)
 
 	nadList, err := nadAttachDefClientSet.K8sCniCncfIoV1().NetworkAttachmentDefinitions("").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -434,41 +451,25 @@ func validateForFabricOperator(operation v1beta1.Operation, oldNad, netAttachDef
 		if !isFabricOperatorRequired(nad) {
 			continue
 		}
-		otherConf, interested := isVlanOperatorRequired(nad)
-		if !interested {
+		otherConf, _, _ := datatypes.ShouldTriggerTopoAction(&nad)
+		if thisConf.Type != otherConf.Type {
 			continue
 		}
-		if netConf.Vlan != otherConf.Vlan {
+		if thisConf.Vlan != otherConf.Vlan {
 			continue
 		}
 		otherProject, _ := nad.GetAnnotations()[datatypes.ExtProjectIDKey]
 		otherNetwork, _ := nad.GetAnnotations()[datatypes.ExtNetworkIDKey]
 		if project != otherProject || network != otherNetwork {
 			errString := fmt.Sprintf("%s/%s and %s/%s has the same vlan (%d) but different extProject (%s vs %s) and/or extNetwork (%s vs %s)",
-				namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, netConf.Vlan, project, otherProject, network, otherNetwork)
+				namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, thisConf.Vlan, project, otherProject, network, otherNetwork)
 			return errors.New(errString)
 		}
 		otherNs, _ := nad.GetAnnotations()[datatypes.NodeSelectorKey]
 		if ns != otherNs {
 			errString := fmt.Sprintf("%s/%s and %s/%s has the same vlan (%d) but different nodeSelector (%s vs %s)",
-				namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, netConf.Vlan, ns, otherNs)
+				namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, thisConf.Vlan, ns, otherNs)
 			return errors.New(errString)
-		}
-	}
-
-	// Check NAD for topology action
-	if operation == "CREATE" {
-		_, _, err := datatypes.ShouldTriggerTopoAction(&netAttachDef)
-		if err != nil {
-			return err
-		}
-
-	}
-
-	if operation == "UPDATE" {
-		_, _, err := datatypes.ShouldTriggerTopoUpdate(&oldNad, &netAttachDef)
-		if err != nil {
-			return err
 		}
 	}
 
