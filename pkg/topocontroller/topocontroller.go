@@ -31,6 +31,7 @@ type PodInfo struct {
 	PodNamespace   string
 	Provider       string
 	ProviderConfig string
+	VlanMap        map[string][]string
 }
 
 type NetworkStatus map[string][]string
@@ -75,6 +76,8 @@ func NewTopologyController(
 		nodesSynced:           nodeInformer.Informer().HasSynced,
 		workqueue:             workqueue.NewNamedRateLimitingQueue(workqueue.DefaultControllerRateLimiter(), controllerAgentName),
 	}
+
+	TopologyController.podInfo.VlanMap = make(map[string][]string)
 
 	netAttachDefInformer.Informer().AddEventHandler(cache.ResourceEventHandlerFuncs{
 		AddFunc:    TopologyController.handleNetAttachDefAddEvent,
@@ -186,14 +189,18 @@ func (c *TopologyController) handleNetAttachDefAddEvent(obj interface{}) {
 	klog.Infof("handling nad addition of %s/%s", namespace, name)
 
 	// Check NAD for action
-	_, trigger, err := datatypes.ShouldTriggerTopoAction(nad)
+	netConf, trigger, err := datatypes.ShouldTriggerTopoAction(nad)
 	if err != nil || !trigger {
 		klog.Infof("NAD ADD of %s/%s is not an action triggering nad: ignored", namespace, name)
 		return
 	}
 	// Handle network attach
-	workItem := WorkItem{action: datatypes.CreateAttach, newNad: nad}
-	c.workqueue.Add(workItem)
+	numUsers := datatypes.AddToVlanMap(c.podInfo.VlanMap, namespace+"/"+name, netConf.Master)
+	klog.Infof("vlan interface %s has %d users", netConf.Master, numUsers)
+	if numUsers == 1 {
+		workItem := WorkItem{action: datatypes.CreateAttach, newNad: nad}
+		c.workqueue.Add(workItem)
+	}
 }
 
 func (c *TopologyController) handleNetAttachDefDeleteEvent(obj interface{}) {
@@ -208,14 +215,18 @@ func (c *TopologyController) handleNetAttachDefDeleteEvent(obj interface{}) {
 	klog.Infof("handling nad deletion of %s/%s", namespace, name)
 
 	// Check NAD for action
-	_, trigger, err := datatypes.ShouldTriggerTopoAction(nad)
+	netConf, trigger, err := datatypes.ShouldTriggerTopoAction(nad)
 	if err != nil || !trigger {
 		klog.Infof("NAD DELETE of %s/%s is not an action triggering nad: ignored", namespace, name)
 		return
 	}
 	// Handle network detach
-	workItem := WorkItem{action: datatypes.DeleteDetach, oldNad: nad, newNad: nad}
-	c.workqueue.Add(workItem)
+	numUsers := datatypes.DelFromVlanMap(c.podInfo.VlanMap, namespace+"/"+name, netConf.Master)
+	klog.Infof("vlan interface %s has %d users", netConf.Master, numUsers)
+	if numUsers == 0 {
+		workItem := WorkItem{action: datatypes.DeleteDetach, oldNad: nad, newNad: nad}
+		c.workqueue.Add(workItem)
+	}
 }
 
 func (c *TopologyController) handleNetAttachDefUpdateEvent(oldObj, newObj interface{}) {
@@ -240,10 +251,14 @@ func (c *TopologyController) handleNetAttachDefUpdateEvent(oldObj, newObj interf
 	klog.Infof("handling nad update of %s/%s", namespace, name)
 
 	// Check NAD for action
-	updateAction, err := datatypes.ShouldTriggerTopoUpdate(oldNad, newNad)
+	updateAction, netConf, err := datatypes.ShouldTriggerTopoUpdate(oldNad, newNad)
 	if err != nil || updateAction == 0 {
 		klog.Infof("NAD UPDATE of %s/%s is not an action triggering nad: ignored", namespace, name)
 		return
+	}
+	if updateAction == datatypes.UpdateAttach {
+		numUsers := datatypes.AddToVlanMap(c.podInfo.VlanMap, namespace+"/"+name, netConf.Master)
+		klog.Infof("vlan interface %s has %d users", netConf.Master, numUsers)
 	}
 	workItem := WorkItem{action: updateAction, oldNad: oldNad, newNad: newNad}
 	c.workqueue.Add(workItem)

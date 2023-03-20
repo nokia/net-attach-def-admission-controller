@@ -15,6 +15,7 @@
 package webhook
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -27,6 +28,7 @@ import (
 	"github.com/containernetworking/cni/libcni"
 	"github.com/golang/glog"
 	netv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	netClientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
 	"github.com/nokia/net-attach-def-admission-controller/pkg/datatypes"
 	"github.com/pkg/errors"
 	"gopkg.in/k8snetworkplumbingwg/multus-cni.v3/pkg/types"
@@ -52,7 +54,8 @@ const (
 )
 
 var (
-	clientset kubernetes.Interface
+	clientset             kubernetes.Interface
+	nadAttachDefClientSet netClientset.Interface
 )
 
 // validateCNIConfig verifies following fields
@@ -415,6 +418,44 @@ func validateForFabricOperator(operation v1beta1.Operation, oldNad, netAttachDef
 		return nil
 	}
 
+	// Check NAD for vlan sharing
+	name := netAttachDef.ObjectMeta.Name
+	namespace := netAttachDef.ObjectMeta.Namespace
+	ns, _ := netAttachDef.GetAnnotations()[datatypes.NodeSelectorKey]
+	project, _ := netAttachDef.GetAnnotations()[datatypes.ExtProjectIDKey]
+	network, _ := netAttachDef.GetAnnotations()[datatypes.ExtNetworkIDKey]
+	netConf, _ := isVlanOperatorRequired(netAttachDef)
+
+	nadList, err := nadAttachDefClientSet.K8sCniCncfIoV1().NetworkAttachmentDefinitions("").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, nad := range nadList.Items {
+		if !isFabricOperatorRequired(nad) {
+			continue
+		}
+		otherConf, interested := isVlanOperatorRequired(nad)
+		if !interested {
+			continue
+		}
+		if netConf.Vlan != otherConf.Vlan {
+			continue
+		}
+		otherProject, _ := nad.GetAnnotations()[datatypes.ExtProjectIDKey]
+		otherNetwork, _ := nad.GetAnnotations()[datatypes.ExtNetworkIDKey]
+		if project != otherProject || network != otherNetwork {
+			errString := fmt.Sprintf("%s/%s and %s/%s has the same vlan (%d) but different extProject (%s vs %s) and/or extNetwork (%s vs %s)",
+				namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, netConf.Vlan, project, otherProject, network, otherNetwork)
+			return errors.New(errString)
+		}
+		otherNs, _ := nad.GetAnnotations()[datatypes.NodeSelectorKey]
+		if ns != otherNs {
+			errString := fmt.Sprintf("%s/%s and %s/%s has the same vlan (%d) but different nodeSelector (%s vs %s)",
+				namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, netConf.Vlan, ns, otherNs)
+			return errors.New(errString)
+		}
+	}
+
 	// Check NAD for topology action
 	if operation == "CREATE" {
 		_, _, err := datatypes.ShouldTriggerTopoAction(&netAttachDef)
@@ -425,7 +466,7 @@ func validateForFabricOperator(operation v1beta1.Operation, oldNad, netAttachDef
 	}
 
 	if operation == "UPDATE" {
-		_, err := datatypes.ShouldTriggerTopoUpdate(&oldNad, &netAttachDef)
+		_, _, err := datatypes.ShouldTriggerTopoUpdate(&oldNad, &netAttachDef)
 		if err != nil {
 			return err
 		}
@@ -770,4 +811,9 @@ func SetupInClusterClient() {
 	if err != nil {
 		glog.Fatal(err)
 	}
+	nadAttachDefClientSet, err = netClientset.NewForConfig(config)
+	if err != nil {
+		glog.Fatal(err)
+	}
+
 }
