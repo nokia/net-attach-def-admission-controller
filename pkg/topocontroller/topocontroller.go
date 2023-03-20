@@ -188,7 +188,7 @@ func (c *TopologyController) handleNetAttachDefAddEvent(obj interface{}) {
 	// Check NAD for action
 	_, trigger, err := datatypes.ShouldTriggerTopoAction(nad)
 	if err != nil || !trigger {
-		klog.Infof("%s/%s is not an action triggering nad: ignored", namespace, name)
+		klog.Infof("NAD ADD of %s/%s is not an action triggering nad: ignored", namespace, name)
 		return
 	}
 	// Handle network attach
@@ -210,7 +210,7 @@ func (c *TopologyController) handleNetAttachDefDeleteEvent(obj interface{}) {
 	// Check NAD for action
 	_, trigger, err := datatypes.ShouldTriggerTopoAction(nad)
 	if err != nil || !trigger {
-		klog.Infof("%s/%s is not an action triggering nad: ignored", namespace, name)
+		klog.Infof("NAD DELETE of %s/%s is not an action triggering nad: ignored", namespace, name)
 		return
 	}
 	// Handle network detach
@@ -242,7 +242,7 @@ func (c *TopologyController) handleNetAttachDefUpdateEvent(oldObj, newObj interf
 	// Check NAD for action
 	updateAction, err := datatypes.ShouldTriggerTopoUpdate(oldNad, newNad)
 	if err != nil || updateAction == 0 {
-		klog.Infof("%s/%s does not have an action triggering update: ignored", namespace, name)
+		klog.Infof("NAD UPDATE of %s/%s is not an action triggering nad: ignored", namespace, name)
 		return
 	}
 	workItem := WorkItem{action: updateAction, oldNad: oldNad, newNad: newNad}
