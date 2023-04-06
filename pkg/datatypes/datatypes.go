@@ -230,8 +230,8 @@ func ShouldTriggerTopoUpdate(oldNad, newNad *netattachdef.NetworkAttachmentDefin
 	}
 	// Implemented but not officially supported
 	if trigger1 && !trigger2 {
-		return 0, newNetConf, fmt.Errorf("NAD change from FSS eligible to not eligble is not allowed")
-		//return UpdateDetach, newNetConf, nil
+		//return 0, newNetConf, fmt.Errorf("NAD change from FSS eligible to not eligble is not allowed")
+		return UpdateDetach, newNetConf, nil
 	}
 	// Handle network change
 	if oldNetConf.Type != newNetConf.Type {
@@ -243,9 +243,6 @@ func ShouldTriggerTopoUpdate(oldNad, newNad *netattachdef.NetworkAttachmentDefin
 	vlanMode := true
 	if len(oldNetConf.VlanTrunk) > 0 {
 		vlanMode = false
-		if oldNetConf.VlanTrunk != newNetConf.VlanTrunk {
-			return 0, newNetConf, fmt.Errorf("SRIOV NAD vlan_trunk change is not allowed")
-		}
 	}
 	anno1 := oldNad.GetAnnotations()
 	anno2 := newNad.GetAnnotations()
@@ -263,8 +260,8 @@ func ShouldTriggerTopoUpdate(oldNad, newNad *netattachdef.NetworkAttachmentDefin
 	} else {
 		sriovOverlays1, _ := anno1[SriovOverlaysKey]
 		sriovOverlays2, _ := anno2[SriovOverlaysKey]
-		if sriovOverlays1 != sriovOverlays2 {
-			return 0, newNetConf, fmt.Errorf("NAD SRIOV overlays change is not allowed")
+		if len(sriovOverlays1) != len(sriovOverlays2) {
+			return 0, newNetConf, fmt.Errorf("NAD SRIOV number of overlays change is not allowed")
 		}
 	}
 	ns1, _ := anno1[NodeSelectorKey]
