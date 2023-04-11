@@ -233,8 +233,8 @@ func ShouldTriggerTopoUpdate(oldNad, newNad *netattachdef.NetworkAttachmentDefin
 	}
 	// Implemented but not officially supported
 	if trigger1 && !trigger2 {
-		//return 0, newNetConf, fmt.Errorf("NAD change from FSS eligible to not eligble is not allowed")
-		return UpdateDetach, newNetConf, nil
+		return 0, newNetConf, fmt.Errorf("NAD change from FSS eligible to not eligble is not allowed")
+		//return UpdateDetach, newNetConf, nil
 	}
 	// Handle network change
 	if oldNetConf.Type != newNetConf.Type {

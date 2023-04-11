@@ -437,6 +437,9 @@ func validateForFabricOperator(operation v1beta1.Operation, oldNad, netAttachDef
 	}
 
 	// Check NAD for vlan sharing
+	if !isFabricOperatorRequired(netAttachDef) {
+		return nil
+	}
 	name := netAttachDef.ObjectMeta.Name
 	namespace := netAttachDef.ObjectMeta.Namespace
 	ns, _ := netAttachDef.GetAnnotations()[datatypes.NodeSelectorKey]
