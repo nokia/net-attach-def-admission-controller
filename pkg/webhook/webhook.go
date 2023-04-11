@@ -502,7 +502,7 @@ func validateForFabricOperator(operation v1beta1.Operation, oldNad, netAttachDef
 			otherSriovOverlays, _ := nad.GetAnnotations()[datatypes.SriovOverlaysKey]
 			if thisSriovOverlays != otherSriovOverlays {
 				errString := fmt.Sprintf("%s/%s and %s/%s has the same vlanTrunk (%s) but different Overlays (%s vs %s)",
-					namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, thisConf.Vlan, thisSriovOverlays, otherSriovOverlays)
+					namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, thisConf.VlanTrunk, thisSriovOverlays, otherSriovOverlays)
 				return errors.New(errString)
 			}
 		}
