@@ -137,7 +137,7 @@ func deleteVlanInterface(vlanMap map[string][]string, nadName string, vlanIfName
 
 func getNodeTopology(provider string) ([]byte, error) {
 	topology := datatypes.NodeTopology{
-		Bonds:      make(map[string]datatypes.NicMap),
+		Bonds:      make(map[string]datatypes.Bond),
 		SriovPools: make(map[string]datatypes.NicMap),
 	}
 
@@ -164,7 +164,10 @@ func getNodeTopology(provider string) ([]byte, error) {
 		}
 		if bondName != "" {
 			bondIndex[bondName] = link.Attrs().Index
-			topology.Bonds[bondName] = make(datatypes.NicMap)
+			bond := datatypes.Bond{
+				Mode:  "active-backup",
+				Ports: make(datatypes.NicMap)}
+			topology.Bonds[bondName] = bond
 		}
 	}
 	for _, link := range links {
@@ -202,9 +205,17 @@ func getNodeTopology(provider string) ([]byte, error) {
 			var jsonNic datatypes.JsonNic
 			json.Unmarshal(tmp, &jsonNic)
 			if provider == "openstack" {
-				topology.Bonds[bondName][nic.MacAddress] = jsonNic
+				topology.Bonds[bondName] = datatypes.Bond{
+					Mode: "active-backup",
+					Ports: datatypes.NicMap{
+						nic.MacAddress: jsonNic},
+				}
 			} else {
-				topology.Bonds[bondName][nic.Name] = jsonNic
+				topology.Bonds[bondName] = datatypes.Bond{
+					Mode: "active-backup",
+					Ports: datatypes.NicMap{
+						nic.Name: jsonNic},
+				}
 			}
 		}
 	}
