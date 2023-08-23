@@ -33,8 +33,9 @@ type JsonNic map[string]interface{}
 type NicMap map[string]JsonNic
 
 type Bond struct {
-	Mode  string
-	Ports NicMap
+	Mode       string `json:"mode"`
+	MacAddress string `json:"mac-address"`
+	Ports      NicMap
 }
 
 type NodeTopology struct {

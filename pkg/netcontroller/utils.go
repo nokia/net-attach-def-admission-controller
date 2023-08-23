@@ -164,9 +164,14 @@ func getNodeTopology(provider string) ([]byte, error) {
 		}
 		if bondName != "" {
 			bondIndex[bondName] = link.Attrs().Index
+			bondMode := "active-backup"
+			if bond, ok := link.(*netlink.Bond); ok {
+				bondMode = bond.Mode.String()
+			}
 			bond := datatypes.Bond{
-				Mode:  "active-backup",
-				Ports: make(datatypes.NicMap)}
+				Mode:       bondMode,
+				MacAddress: link.Attrs().HardwareAddr.String(),
+				Ports:      make(datatypes.NicMap)}
 			topology.Bonds[bondName] = bond
 		}
 	}
@@ -205,17 +210,9 @@ func getNodeTopology(provider string) ([]byte, error) {
 			var jsonNic datatypes.JsonNic
 			json.Unmarshal(tmp, &jsonNic)
 			if provider == "openstack" {
-				topology.Bonds[bondName] = datatypes.Bond{
-					Mode: "active-backup",
-					Ports: datatypes.NicMap{
-						nic.MacAddress: jsonNic},
-				}
+				topology.Bonds[bondName].Ports[nic.MacAddress] = jsonNic
 			} else {
-				topology.Bonds[bondName] = datatypes.Bond{
-					Mode: "active-backup",
-					Ports: datatypes.NicMap{
-						nic.Name: jsonNic},
-				}
+				topology.Bonds[bondName].Ports[nic.Name] = jsonNic
 			}
 		}
 	}
