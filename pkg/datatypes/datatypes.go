@@ -14,35 +14,48 @@ import (
 )
 
 const (
-	SriovResourceKey   = "k8s.v1.cni.cncf.io/resourceName"
-	NodeSelectorKey    = "k8s.v1.cni.cncf.io/nodeSelector"
-	ExtProjectNameKey  = "nokia.com/extProjectName"
-	ExtNetworkNameKey  = "nokia.com/extNetworkName"
-	SriovOverlaysKey   = "nokia.com/sriov-vf-vlan-trunk-overlays"
+	// NetworkTopologyKey for NCS network topology in NODE
 	NetworkTopologyKey = "nokia.com/network-topology"
-	NetworkStatusKey   = "nokia.com/network-status"
+	// SriovResourceKey for SRIOV resource pool name in NAD
+	SriovResourceKey = "k8s.v1.cni.cncf.io/resourceName"
+	// NodeSelectorKey for nodeSelector in NAD
+	NodeSelectorKey = "k8s.v1.cni.cncf.io/nodeSelector"
+	// ExtProjectNameKey for FSS workload in NAD
+	ExtProjectNameKey = "nokia.com/extProjectName"
+	// ExtNetworkNameKey for FSS subnet in NAD
+	ExtNetworkNameKey = "nokia.com/extNetworkName"
+	// SriovOverlaysKey for SRIOV trunk in NAD
+	SriovOverlaysKey = "nokia.com/sriov-vf-vlan-trunk-overlays"
+	// NetworkStatusKey for NCS network status in NAD
+	NetworkStatusKey = "nokia.com/network-status"
 )
 
+// Nic for NIC port
 type Nic struct {
 	Name       string `json:"name"`
 	MacAddress string `json:"mac-address"`
 }
 
-// NIC in JSON format
+// JsonNic for JSON encode and decode
 type JsonNic map[string]interface{}
+
+// NicMap for NIC by a primary key
 type NicMap map[string]JsonNic
 
+// Bond for NIC bond
 type Bond struct {
 	Mode       string `json:"mode"`
 	MacAddress string `json:"mac-address"`
 	Ports      NicMap
 }
 
+// NodeTopology for NIC bonds and SRIOV pools
 type NodeTopology struct {
 	Bonds      map[string]Bond
 	SriovPools map[string]NicMap
 }
 
+// NetConf for NCS version of NetConf
 type NetConf struct {
 	types.NetConf
 	Master    string `json:"master,omitempty"`
@@ -50,6 +63,7 @@ type NetConf struct {
 	VlanTrunk string `json:"vlan_trunk,omitempty"`
 }
 
+// NadAction for code readability
 type NadAction int
 
 const (
@@ -75,6 +89,7 @@ const (
 	NodeAttachDetach NadAction = 10
 )
 
+// GetVlanIds returns an array of vlanIDs
 func GetVlanIds(vlanTrunk string) ([]int, error) {
 	result := []int{}
 	err := fmt.Errorf("Trunk format is invalid, it should follow this pattern 50,51,700-710")
@@ -105,6 +120,7 @@ func GetVlanIds(vlanTrunk string) ([]int, error) {
 	return result, nil
 }
 
+// GetNetConf returns NCS version of NetConf
 func GetNetConf(nad *netattachdef.NetworkAttachmentDefinition) (NetConf, error) {
 	// Read NAD Config
 	var netConf NetConf
@@ -130,6 +146,7 @@ func GetNetConf(nad *netattachdef.NetworkAttachmentDefinition) (NetConf, error) 
 	return netConf, nil
 }
 
+// ShouldTriggerTopoAction tells if NAD requires FSS Operator
 func ShouldTriggerTopoAction(nad *netattachdef.NetworkAttachmentDefinition) (NetConf, bool, error) {
 	// Get NAD Config
 	netConf, err := GetNetConf(nad)
@@ -223,6 +240,7 @@ func ShouldTriggerTopoAction(nad *netattachdef.NetworkAttachmentDefinition) (Net
 	return netConf, true, nil
 }
 
+// ShouldTriggerTopoUpdate tells if NAD UPDATE requires FSS Operator
 func ShouldTriggerTopoUpdate(oldNad, newNad *netattachdef.NetworkAttachmentDefinition) (NadAction, NetConf, error) {
 	// Check NAD for action
 	oldNetConf, trigger1, _ := ShouldTriggerTopoAction(oldNad)
@@ -302,6 +320,7 @@ func ShouldTriggerTopoUpdate(oldNad, newNad *netattachdef.NetworkAttachmentDefin
 	return UpdateAttachDetach, newNetConf, nil
 }
 
+// AddToVlanMap adds NAD as VLAN user
 func AddToVlanMap(vlanMap map[string][]string, nadName string, vlanIfName string) int {
 	_, ok := vlanMap[vlanIfName]
 	if !ok {
@@ -323,6 +342,7 @@ func AddToVlanMap(vlanMap map[string][]string, nadName string, vlanIfName string
 	return numUsers
 }
 
+// DelFromVlanMap removes NAD as VLAN user
 func DelFromVlanMap(vlanMap map[string][]string, nadName string, vlanIfName string) int {
 	_, ok := vlanMap[vlanIfName]
 	if !ok {

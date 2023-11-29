@@ -70,6 +70,7 @@ type Controller struct {
 	nadClientset *netattachdefClientset.Clientset
 }
 
+// StartWatchingHA is added to skip single controller metric collection for now
 func StartWatchingHA(_ *string) {
 }
 

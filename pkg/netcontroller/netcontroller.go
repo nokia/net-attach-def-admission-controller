@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This implements NCS VLAN Operator and Node Agent for FSS Operator.
+// Package netcontroller implements NCS VLAN Operator and Node Agent for FSS Operator.
 package netcontroller
 
 import (

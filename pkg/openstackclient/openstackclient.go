@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This implements CN-A Client for FSS Operator.
+// Package openstackclient implements CN-A Client for FSS Operator.
 package openstackclient
 
 import (
@@ -30,7 +30,7 @@ import (
 	"k8s.io/klog"
 )
 
-// AuthOpts
+// AuthOpts is adapted from cloud-provider-openstack
 type AuthOpts struct {
 	AuthURL      string                   `gcfg:"auth-url" mapstructure:"auth-url" name:"os-authURL" dependsOn:"os-password|os-trustID|os-applicationCredentialSecret|os-clientCertPath"`
 	UserID       string                   `gcfg:"user-id" mapstructure:"user-id" name:"os-userID" value:"optional" dependsOn:"os-password"`
@@ -46,7 +46,7 @@ type AuthOpts struct {
 	TLSInsecure  string                   `gcfg:"tls-insecure" mapstructure:"tls-insecure" name:"os-TLSInsecure" value:"optional" matches:"^true|false$"`
 }
 
-// ToAuthOptions
+// ToAuthOptions is adapted from cloud-provider-openstack
 func (authOpts AuthOpts) ToAuthOptions() gophercloud.AuthOptions {
 	opts := clientconfig.ClientOpts{
 		// this is needed to disable the clientconfig.AuthOptions func env detection
