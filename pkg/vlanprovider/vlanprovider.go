@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package vlanprovider implements NCS FSS Operator backend interface.
+// Package vlanprovider defines backend interface for FSS Operator.
 package vlanprovider
 
 import (

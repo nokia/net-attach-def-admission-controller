@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package topocontroller implements NCS FSS Operator.
+// Package topocontroller implements FSS Operator.
 package topocontroller
 
 import (

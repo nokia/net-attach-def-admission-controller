@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This implements NCS FSS Operator Openstack interface.
+// This file defines Openstack interface for FSS Operator.
 package vlanprovider
 
 import (

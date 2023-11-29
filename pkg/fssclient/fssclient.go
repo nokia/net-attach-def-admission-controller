@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This implements CN-B Client for FSS Operator.
+// Package fssclient implements FSS REST API interface for FSS Operator.
 package fssclient
 
 import (
@@ -37,6 +37,7 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// AuthOpts is adapted from Openstack Client
 type AuthOpts struct {
 	AuthURL     string `gcfg:"auth-url" mapstructure:"auth-url"`
 	Username    string
@@ -47,6 +48,7 @@ type AuthOpts struct {
 	Insecure    bool
 }
 
+// FssClient defines FSS REST API Client
 type FssClient struct {
 	cfg                AuthOpts
 	rootURL            string
@@ -73,6 +75,7 @@ const (
 	subnetAssociationPath   = "/rest/connect/api/v1/plugins/hostportlabelsubnetassociations"
 )
 
+// GetAccessToken checks if access token is still valid
 func (f *FssClient) GetAccessToken() error {
 	now := time.Now()
 	// Check if refreshToken expiried
@@ -88,6 +91,7 @@ func (f *FssClient) GetAccessToken() error {
 	return nil
 }
 
+// GET implements GET method
 func (f *FssClient) GET(path string) (int, []byte, error) {
 	err := f.GetAccessToken()
 	if err != nil {
@@ -118,6 +122,7 @@ func (f *FssClient) GET(path string) (int, []byte, error) {
 	return response.StatusCode, jsonRespData, err
 }
 
+// DELETE implements DELETE method
 func (f *FssClient) DELETE(path string) (int, []byte, error) {
 	err := f.GetAccessToken()
 	if err != nil {
@@ -148,6 +153,7 @@ func (f *FssClient) DELETE(path string) (int, []byte, error) {
 	return response.StatusCode, jsonRespData, err
 }
 
+// POST implements POST method
 func (f *FssClient) POST(path string, jsonReqData []byte) (int, []byte, error) {
 	err := f.GetAccessToken()
 	if err != nil {
@@ -205,6 +211,7 @@ func (f *FssClient) setConfigMap(name string, data []byte) error {
 	return err
 }
 
+// TxnDone marks end of a transaction
 func (f *FssClient) TxnDone() {
 	jsonString, err := f.database.encode()
 	if err != nil {
@@ -270,6 +277,7 @@ func (f *FssClient) login(loginURL string) error {
 	return nil
 }
 
+// NewFssClient creates a new FSS REST API Client
 func NewFssClient(k8sClientSet kubernetes.Interface, podNamespace string, cfg *AuthOpts) (*FssClient, error) {
 	u, err := url.Parse(cfg.AuthURL)
 	if err != nil {

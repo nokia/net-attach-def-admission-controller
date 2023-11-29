@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Package openstackclient implements CN-A Client for FSS Operator.
+// Package openstackclient implements Openstack interface for FSS Operator.
 package openstackclient
 
 import (
