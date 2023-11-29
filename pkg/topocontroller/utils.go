@@ -77,7 +77,7 @@ func (c *TopologyController) updateNadAnnotations(nad *netattachdef.NetworkAttac
 			return err
 		}
 		annotationsMap := nad.GetAnnotations()
-		var networkStatus NetworkStatus
+		var networkStatus networkStatusType
 		networkStatus = make(map[string][]string)
 		jsonString, ok := annotationsMap[datatypes.NetworkStatusKey]
 		if !ok || len(jsonString) == 0 {
@@ -237,7 +237,7 @@ func (c *TopologyController) handleNetworkAttach(nad *netattachdef.NetworkAttach
 		overlays = append(overlays, overlay)
 	}
 	nodesError := make(map[string]error)
-	for k, _ := range nodesInfo {
+	for k := range nodesInfo {
 		nodesError[k] = nil
 	}
 	klog.Infof("Handle overlay %+v", overlays)
@@ -280,13 +280,13 @@ func (c *TopologyController) handleNetworkDetach(nad *netattachdef.NetworkAttach
 	project, _ := annotationsMap[datatypes.ExtProjectNameKey]
 	network, _ := annotationsMap[datatypes.ExtNetworkNameKey]
 	var nodesDetached []string
-        nodesInfo := make(map[string]datatypes.NodeTopology)
+	nodesInfo := make(map[string]datatypes.NodeTopology)
 	for _, node := range nodes {
 		nodeName := node.ObjectMeta.Name
-                nodeInfo := datatypes.NodeTopology{
-                        Bonds:      make(map[string]datatypes.Bond),
-                        SriovPools: make(map[string]datatypes.NicMap),
-                }
+		nodeInfo := datatypes.NodeTopology{
+			Bonds:      make(map[string]datatypes.Bond),
+			SriovPools: make(map[string]datatypes.NicMap),
+		}
 		nodesDetached = append(nodesDetached, nodeName)
 		nodeAnnotation := node.GetAnnotations()
 		topology, ok := nodeAnnotation[datatypes.NetworkTopologyKey]
@@ -305,7 +305,7 @@ func (c *TopologyController) handleNetworkDetach(nad *netattachdef.NetworkAttach
 					klog.Errorf("Skip detaching %s: node topology is not available for bond %s", nodeName, bondName)
 					continue
 				}
-                                nodeInfo.Bonds[bondName] = bond
+				nodeInfo.Bonds[bondName] = bond
 			}
 		case "sriov":
 			{
@@ -317,10 +317,10 @@ func (c *TopologyController) handleNetworkDetach(nad *netattachdef.NetworkAttach
 					klog.Errorf("Skip detaching %s: node topology is not available for sriov pool %s", nodeName, sriovPoolName)
 					continue
 				}
-                                nodeInfo.SriovPools[sriovPoolName] = nics
+				nodeInfo.SriovPools[sriovPoolName] = nics
 			}
 		}
-                nodesInfo[nodeName] = nodeInfo
+		nodesInfo[nodeName] = nodeInfo
 	}
 	if action == datatypes.UpdateDetach && len(nodesInfo) == 0 {
 		klog.Infof("Skip the DETACH procedure: no candidate node found for %s/%s", namespace, name)
@@ -354,7 +354,7 @@ func (c *TopologyController) handleNetworkDetach(nad *netattachdef.NetworkAttach
 	return nil
 }
 
-func (c *TopologyController) processNadItem(workItem WorkItem) error {
+func (c *TopologyController) processNadItem(workItem workItemType) error {
 	klog.Infof("processNadItem invoked for %s/%s", workItem.newNad.ObjectMeta.Name, workItem.newNad.ObjectMeta.Namespace)
 	var err error
 	// Note: no return inside the switch block
@@ -397,7 +397,7 @@ func (c *TopologyController) processNadItem(workItem WorkItem) error {
 		}
 	case datatypes.UpdateAttachDetach:
 		{
-			var networkStatus NetworkStatus
+			var networkStatus networkStatusType
 			networkStatus = make(map[string][]string)
 			annotationsMap := workItem.oldNad.GetAnnotations()
 			jsonString, ok := annotationsMap[datatypes.NetworkStatusKey]
@@ -454,7 +454,7 @@ func (c *TopologyController) processNadItem(workItem WorkItem) error {
 	return nil
 }
 
-func (c *TopologyController) processNodeItem(workItem WorkItem) error {
+func (c *TopologyController) processNodeItem(workItem workItemType) error {
 	klog.Infof("processNodeItem invoked for %s", workItem.node.ObjectMeta.Name)
 	nadList, err := c.netAttachDefClientSet.K8sCniCncfIoV1().NetworkAttachmentDefinitions("").List(context.TODO(), metav1.ListOptions{})
 	if err != nil {
@@ -533,10 +533,10 @@ func (c *TopologyController) processNodeItem(workItem WorkItem) error {
 				if !trigger {
 					continue
 				}
-                                annotationsMap := nad.GetAnnotations()
-                                ns, _ := annotationsMap[datatypes.NodeSelectorKey]
-                                var networkStatus NetworkStatus
-                                networkStatus = make(map[string][]string)
+				annotationsMap := nad.GetAnnotations()
+				ns, _ := annotationsMap[datatypes.NodeSelectorKey]
+				var networkStatus networkStatusType
+				networkStatus = make(map[string][]string)
 				jsonString, ok := annotationsMap[datatypes.NetworkStatusKey]
 				if ok && len(jsonString) > 0 {
 					json.Unmarshal([]byte(jsonString), &networkStatus)

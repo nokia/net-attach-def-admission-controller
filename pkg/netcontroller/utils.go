@@ -207,7 +207,7 @@ func getNodeTopology(provider string) ([]byte, error) {
 		if bondName != "" {
 			var tmp []byte
 			tmp, _ = json.Marshal(nic)
-			var jsonNic datatypes.JsonNic
+			var jsonNic datatypes.JSONNic
 			json.Unmarshal(tmp, &jsonNic)
 			if provider == "openstack" {
 				topology.Bonds[bondName].Ports[nic.MacAddress] = jsonNic
@@ -251,7 +251,7 @@ func getNodeTopology(provider string) ([]byte, error) {
 					if ok {
 						var tmp []byte
 						tmp, _ = json.Marshal(nic)
-						var jsonNic datatypes.JsonNic
+						var jsonNic datatypes.JSONNic
 						json.Unmarshal(tmp, &jsonNic)
 						if provider == "openstack" {
 							topology.SriovPools[resource.ResourceName][nic.MacAddress] = jsonNic

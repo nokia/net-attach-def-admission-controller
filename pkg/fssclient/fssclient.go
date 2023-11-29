@@ -1031,7 +1031,7 @@ func (f *FssClient) DeleteSubnetInterface(fssWorkloadEvpnId string, fssSubnetId 
 	return result
 }
 
-func (f *FssClient) CreateHostPort(node string, port datatypes.JsonNic, isLag bool, parentHostPortID string) (string, error) {
+func (f *FssClient) CreateHostPort(node string, port datatypes.JSONNic, isLag bool, parentHostPortID string) (string, error) {
 	// Check if port exists
 	portName := port["name"].(string)
 	hostPortID, ok := f.GetHostPort(node, portName)
@@ -1079,7 +1079,7 @@ func (f *FssClient) GetHostPort(node string, port string) (string, bool) {
 	return hostPortID, true
 }
 
-func (f *FssClient) AttachHostPort(hostPortLabelID string, node string, port datatypes.JsonNic) error {
+func (f *FssClient) AttachHostPort(hostPortLabelID string, node string, port datatypes.JSONNic) error {
 	// Check if port exists
 	portName := port["name"].(string)
 	hostPortID, ok := f.GetHostPort(node, portName)
@@ -1119,7 +1119,7 @@ func (f *FssClient) AttachHostPort(hostPortLabelID string, node string, port dat
 	return nil
 }
 
-func (f *FssClient) DetachHostPort(hostPortLabelID string, node string, port datatypes.JsonNic) error {
+func (f *FssClient) DetachHostPort(hostPortLabelID string, node string, port datatypes.JSONNic) error {
 	var result error
 	// Check if port exists
 	portName := port["name"].(string)

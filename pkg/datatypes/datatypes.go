@@ -1,3 +1,18 @@
+// Copyright (c) 2021 Nokia Networks
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Package datatypes defines shared data structures
 package datatypes
 
 import (
@@ -36,11 +51,11 @@ type Nic struct {
 	MacAddress string `json:"mac-address"`
 }
 
-// JsonNic for JSON encode and decode
-type JsonNic map[string]interface{}
+// JSONNic for JSON encode and decode
+type JSONNic map[string]interface{}
 
 // NicMap for NIC by a primary key
-type NicMap map[string]JsonNic
+type NicMap map[string]JSONNic
 
 // Bond for NIC bond
 type Bond struct {
@@ -71,11 +86,11 @@ const (
 	Create NadAction = 1
 	//Delete ... NAD deleted ==> delete host interface
 	Delete NadAction = 2
-	//Attach ... NAD created ==> open vlan on switch
+	//CreateAttach ... NAD created ==> open vlan on switch
 	CreateAttach NadAction = 3
-	//Detach ... NAD deleted ==> close vlan on switch
+	//DeleteDetach ... NAD deleted ==> close vlan on switch
 	DeleteDetach NadAction = 4
-	//AttachDetach ... NAD updated ==> nodeSelector changed
+	//UpdateAttachDetach ... NAD updated ==> nodeSelector changed
 	UpdateAttachDetach NadAction = 5
 	//UpdateAttach ... NAD updated ==> becomes in scope (optional content)
 	UpdateAttach NadAction = 6
@@ -83,9 +98,9 @@ const (
 	UpdateDetach NadAction = 7
 	//NodeAttach ... open vlan on switch
 	NodeAttach NadAction = 8
-	//Detach ... close vlan on switch
+	//NodeDetach ... close vlan on switch
 	NodeDetach NadAction = 9
-	//AttachDetach ... nodes using vlan changed
+	//NodeAttachDetach ... nodes using vlan changed
 	NodeAttachDetach NadAction = 10
 )
 

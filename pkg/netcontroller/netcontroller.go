@@ -43,14 +43,14 @@ const (
 	controllerAgentName = "net-attach-def-netcontroller"
 )
 
-type NodeInfo struct {
+type nodeInfoType struct {
 	Provider   string
 	NodeName   string
 	NodeLabels map[string]string
 	VlanMap    map[string][]string
 }
 
-type WorkItem struct {
+type workItemType struct {
 	action     datatypes.NadAction
 	nad        *netattachdef.NetworkAttachmentDefinition
 	vlanIfName string
@@ -58,7 +58,7 @@ type WorkItem struct {
 
 // NetworkController is the controller implementation for VLAN Operator
 type NetworkController struct {
-	nodeInfo              NodeInfo
+	nodeInfo              nodeInfoType
 	k8sClientSet          kubernetes.Interface
 	netAttachDefClientSet clientset.Interface
 	netAttachDefsSynced   cache.InformerSynced
@@ -92,7 +92,7 @@ func NewNetworkController(
 		klog.Fatalf("error updating node annonation: %s", err.Error())
 	}
 
-	nodeInfo := NodeInfo{
+	nodeInfo := nodeInfoType{
 		Provider:   provider,
 		NodeName:   nodeName,
 		NodeLabels: node.Labels,
@@ -190,7 +190,7 @@ func (c *NetworkController) handleNetAttachDefAddEvent(obj interface{}) {
 	}
 
 	// Create vlan interface
-	workItem := WorkItem{action: datatypes.Create, nad: nad, vlanIfName: netConf.Master}
+	workItem := workItemType{action: datatypes.Create, nad: nad, vlanIfName: netConf.Master}
 	c.workqueue.Add(workItem)
 }
 
@@ -225,13 +225,13 @@ func (c *NetworkController) handleNetAttachDefUpdateEvent(oldObj, newObj interfa
 
 	// Check if node becomes eligible
 	if !trigger1 && trigger2 {
-		workItem := WorkItem{action: datatypes.Create, nad: newNad, vlanIfName: newNetConf.Master}
+		workItem := workItemType{action: datatypes.Create, nad: newNad, vlanIfName: newNetConf.Master}
 		c.workqueue.Add(workItem)
 	}
 
 	// Check if node becomes not eligible
 	if trigger1 && !trigger2 {
-		workItem := WorkItem{action: datatypes.Delete, nad: oldNad, vlanIfName: oldNetConf.Master}
+		workItem := workItemType{action: datatypes.Delete, nad: oldNad, vlanIfName: oldNetConf.Master}
 		c.workqueue.Add(workItem)
 	}
 }
@@ -255,7 +255,7 @@ func (c *NetworkController) handleNetAttachDefDeleteEvent(obj interface{}) {
 	}
 
 	// Delete vlan interface
-	workItem := WorkItem{action: datatypes.Delete, nad: nad, vlanIfName: netConf.Master}
+	workItem := workItemType{action: datatypes.Delete, nad: nad, vlanIfName: netConf.Master}
 	c.workqueue.Add(workItem)
 }
 
@@ -308,13 +308,13 @@ func (c *NetworkController) handleNodeUpdateEvent(oldObj, newObj interface{}) {
 		if !trigger {
 			// Delete vlan interface if exists
 			if getVlanInterface(netConf.Master) {
-				workItem := WorkItem{action: datatypes.Delete, nad: &nad, vlanIfName: netConf.Master}
+				workItem := workItemType{action: datatypes.Delete, nad: &nad, vlanIfName: netConf.Master}
 				c.workqueue.Add(workItem)
 			}
 		} else {
 			// Create vlan interface if not exists
 			if !getVlanInterface(netConf.Master) {
-				workItem := WorkItem{action: datatypes.Create, nad: &nad, vlanIfName: netConf.Master}
+				workItem := workItemType{action: datatypes.Create, nad: &nad, vlanIfName: netConf.Master}
 				c.workqueue.Add(workItem)
 			}
 		}
@@ -362,7 +362,7 @@ func (c *NetworkController) processNextWorkItem() bool {
 	}
 	defer c.workqueue.Done(key)
 
-	err := c.processItem(key.(WorkItem))
+	err := c.processItem(key.(workItemType))
 	if err != nil {
 		klog.V(4).Infof("work item aborted: %s", err)
 	}
@@ -370,7 +370,7 @@ func (c *NetworkController) processNextWorkItem() bool {
 	return true
 }
 
-func (c *NetworkController) processItem(workItem WorkItem) error {
+func (c *NetworkController) processItem(workItem workItemType) error {
 	switch workItem.action {
 	case datatypes.Create:
 		{
