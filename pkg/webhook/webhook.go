@@ -141,13 +141,13 @@ func validateCNIConfigSriov(config []byte) error {
 			}
 			if vlanExists {
 				vlanString := fmt.Sprintf("%v", vlan)
-				vlanId, err1 := strconv.Atoi(vlanString)
+				vlanID, err1 := strconv.Atoi(vlanString)
 				if err1 != nil {
 					return fmt.Errorf("vlan field format error")
 				}
 				if checkInfraVlan {
 					for i := 0; i < len(infraVlans); i++ {
-						if infraVlans[i] == vlanId {
+						if infraVlans[i] == vlanID {
 							return fmt.Errorf("infrastructure vlan id %d shall not be used in vlan field", infraVlans[i])
 						}
 					}
@@ -182,12 +182,12 @@ func validateCNIConfigSriov(config []byte) error {
 				qos, qosExists := c["vlanQoS"]
 				if qosExists {
 					qosString := fmt.Sprintf("%v", qos)
-					qosId, err1 := strconv.Atoi(qosString)
+					qosID, err1 := strconv.Atoi(qosString)
 					if err1 != nil {
 						return fmt.Errorf("qos field format error")
 					}
-					if qosId != 0 {
-						return fmt.Errorf("qos %v is defined while only default qos (0) is allowed", qosId)
+					if qosID != 0 {
+						return fmt.Errorf("qos %v is defined while only default qos (0) is allowed", qosID)
 					}
 				}
 			}
