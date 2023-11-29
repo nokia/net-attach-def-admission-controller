@@ -23,6 +23,7 @@ import (
 	"github.com/nokia/net-attach-def-admission-controller/pkg/datatypes"
 )
 
+// VlanProvider defines backend VLAN provider
 type VlanProvider interface {
 	Connect(kubernetes.Interface, string) error
 	UpdateNodeTopology(string, string) (string, error)
@@ -32,6 +33,7 @@ type VlanProvider interface {
 	TxnDone()
 }
 
+// NewVlanProvider creates a new instance of VLAN provider
 func NewVlanProvider(provider string, config string) (VlanProvider, error) {
 	switch provider {
 	case "openstack":
@@ -49,5 +51,4 @@ func NewVlanProvider(provider string, config string) (VlanProvider, error) {
 	default:
 		return nil, fmt.Errorf("Not supported provider: %q", provider)
 	}
-
 }

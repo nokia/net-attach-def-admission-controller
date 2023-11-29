@@ -277,7 +277,7 @@ func (f *FssClient) login(loginURL string) error {
 	return nil
 }
 
-// NewFssClient creates a new FSS REST API Client
+// NewFssClient creates a new instance of FSS REST API Client
 func NewFssClient(k8sClientSet kubernetes.Interface, podNamespace string, cfg *AuthOpts) (*FssClient, error) {
 	u, err := url.Parse(cfg.AuthURL)
 	if err != nil {

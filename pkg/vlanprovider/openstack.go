@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This file defines Openstack interface for FSS Operator.
+// Package vlanprovider - Openstack interface
 package vlanprovider
 
 import (
@@ -54,6 +54,7 @@ type CloudConfig struct {
 	Global client.AuthOpts
 }
 
+// OpenstackVlanProvider stores Openstack Client Config
 type OpenstackVlanProvider struct {
 	configFile string
 	epOpts     *gophercloud.EndpointOpts
@@ -61,6 +62,7 @@ type OpenstackVlanProvider struct {
 	network    *gophercloud.ServiceClient
 }
 
+// Connect method implemented by Openstack Client
 func (p *OpenstackVlanProvider) Connect(kubernetes.Interface, string) error {
 	// Read Cloud Config
 	f, err := os.Open(p.configFile)
@@ -96,6 +98,7 @@ func (p *OpenstackVlanProvider) Connect(kubernetes.Interface, string) error {
 	return nil
 }
 
+// UpdateNodeTopology method implemented by Openstack Client
 func (p *OpenstackVlanProvider) UpdateNodeTopology(name string, topology string) (string, error) {
 	// Read in node topology from node agent
 	var nodeTopology datatypes.NodeTopology
@@ -203,18 +206,22 @@ func (p *OpenstackVlanProvider) UpdateNodeTopology(name string, topology string)
 	return string(updated), nil
 }
 
-func (p *OpenstackVlanProvider) Attach(project, network, vlanRange string, nodesInfo map[string]datatypes.NodeTopology, requestType datatypes.NadAction) (map[string]error, error) {
+// Attach method implemented by Openstack Client
+func (p *OpenstackVlanProvider) Attach(string, string, string, map[string]datatypes.NodeTopology, datatypes.NadAction) (map[string]error, error) {
 	nodesStatus := make(map[string]error)
 	return nodesStatus, nil
 }
 
-func (p *OpenstackVlanProvider) Detach(project, network, vlanRange string, nodesInfo map[string]datatypes.NodeTopology, requestType datatypes.NadAction) (map[string]error, error) {
+// Detach method implemented by Openstack Client
+func (p *OpenstackVlanProvider) Detach(string, string, string, map[string]datatypes.NodeTopology, datatypes.NadAction) (map[string]error, error) {
 	nodesStatus := make(map[string]error)
 	return nodesStatus, nil
 }
 
-func (p *OpenstackVlanProvider) DetachNode(nodeName string) {
+// DetachNode method implemented by Openstack Client
+func (p *OpenstackVlanProvider) DetachNode(string) {
 }
 
+// TxnDone method implemented by Openstack Client
 func (p *OpenstackVlanProvider) TxnDone() {
 }

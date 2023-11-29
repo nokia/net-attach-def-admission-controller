@@ -75,7 +75,7 @@ func (authOpts AuthOpts) ToAuthOptions() gophercloud.AuthOptions {
 	return *ao
 }
 
-// NewOpenStackClient creates a new instance of the openstack client
+// NewOpenStackClient creates a new instance of openstack client
 func NewOpenStackClient(cfg *AuthOpts, _ string, _ ...string) (*gophercloud.ProviderClient, error) {
 	provider, err := openstack.NewClient(cfg.AuthURL)
 	if err != nil {

@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// This file defines FSS REST API interface for FSS Operator.
+// Package vlanprovider - FSS REST API interface
 package vlanprovider
 
 import (
@@ -33,11 +33,13 @@ type FssConfig struct {
 	Global client.AuthOpts
 }
 
+// FssVlanProvider stores FSS Client Config
 type FssVlanProvider struct {
 	configFile string
 	fssClient  *client.FssClient
 }
 
+// Connect method implemeneted by FSS Client
 func (p *FssVlanProvider) Connect(k8sClientSet kubernetes.Interface, podNamespace string) error {
 	// Read FSS Config
 	f, err := os.Open(p.configFile)
@@ -63,12 +65,14 @@ func (p *FssVlanProvider) Connect(k8sClientSet kubernetes.Interface, podNamespac
 	return nil
 }
 
+// UpdateNodeTopology method implemeneted by FSS Client
 func (p *FssVlanProvider) UpdateNodeTopology(name string, topology string) (string, error) {
 	return topology, nil
 }
 
 // Attach function input parameter NodesInfo is now a map of NodeTopology
 // either nodeTopology.Bonds or nodeTopology.SriovPools will be filled based on the netConf type is IPVLAN or SRIOV net
+// Attach method implemeneted by FSS Client
 func (p *FssVlanProvider) Attach(fssWorkloadEvpnName, fssSubnetName, vlanRange string, nodesInfo map[string]datatypes.NodeTopology, requestType datatypes.NadAction) (map[string]error, error) {
 	nodesStatus := make(map[string]error)
 	for k := range nodesInfo {
@@ -154,6 +158,7 @@ func (p *FssVlanProvider) Attach(fssWorkloadEvpnName, fssSubnetName, vlanRange s
 	return nodesStatus, nil
 }
 
+// Detach method implemeneted by FSS Client
 func (p *FssVlanProvider) Detach(fssWorkloadEvpnName, fssSubnetName, vlanRange string, nodesInfo map[string]datatypes.NodeTopology, requestType datatypes.NadAction) (map[string]error, error) {
 	nodesStatus := make(map[string]error)
 	for nodeName := range nodesInfo {
@@ -207,10 +212,12 @@ func (p *FssVlanProvider) Detach(fssWorkloadEvpnName, fssSubnetName, vlanRange s
 	return nodesStatus, nil
 }
 
+// DetachNode method implemeneted by FSS Client
 func (p *FssVlanProvider) DetachNode(nodeName string) {
 	p.fssClient.DetachNode(nodeName)
 }
 
+// TxnDone method implemeneted by FSS Client
 func (p *FssVlanProvider) TxnDone() {
 	p.fssClient.TxnDone()
 }
