@@ -83,10 +83,9 @@ func (c *TopologyController) updateNadAnnotations(nad *netattachdef.NetworkAttac
 		if !ok || len(jsonString) == 0 {
 			if len(nodesDetached) > 0 {
 				return nil
-			} else {
-				networkStatus["attached"] = nodesAttached
-				networkStatus["attachment-failed"] = nodesAttachFailed
 			}
+			networkStatus["attached"] = nodesAttached
+			networkStatus["attachment-failed"] = nodesAttachFailed
 		} else {
 			json.Unmarshal([]byte(jsonString), &networkStatus)
 			if len(nodesAttached) > 0 {

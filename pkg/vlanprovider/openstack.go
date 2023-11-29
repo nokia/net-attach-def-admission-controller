@@ -38,6 +38,7 @@ import (
 	"k8s.io/klog"
 )
 
+// VNic is not used yet
 type VNic struct {
 	Name       string
 	MacAddress string

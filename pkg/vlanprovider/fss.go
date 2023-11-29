@@ -66,7 +66,7 @@ func (p *FssVlanProvider) Connect(k8sClientSet kubernetes.Interface, podNamespac
 }
 
 // UpdateNodeTopology method implemeneted by FSS Client
-func (p *FssVlanProvider) UpdateNodeTopology(name string, topology string) (string, error) {
+func (p *FssVlanProvider) UpdateNodeTopology(_ string, topology string) (string, error) {
 	return topology, nil
 }
 
