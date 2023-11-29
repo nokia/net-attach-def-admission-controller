@@ -68,7 +68,7 @@ var _ = Describe("Webhook", func() {
 			It("should return an error", func() {
 				ar := &admissionv1.AdmissionReview{}
 				ar.Request = &admissionv1.AdmissionRequest{}
-				_, err := deserializeNetworkAttachmentDefinition(ar)
+				_, _, err := deserializeNetworkAttachmentDefinition(ar)
 				Expect(err).To(HaveOccurred())
 			})
 		})
@@ -129,7 +129,7 @@ var _ = Describe("Webhook", func() {
 
 	DescribeTable("Network Attachment Definition validation",
 		func(in netv1.NetworkAttachmentDefinition, out bool, shouldFail bool) {
-			actualOut, _, err := validateNetworkAttachmentDefinition(in)
+			actualOut, _, err := validateNetworkAttachmentDefinition("CREATE", in, in)
 			Expect(actualOut).To(Equal(out))
 			if shouldFail {
 				Expect(err).To(HaveOccurred())

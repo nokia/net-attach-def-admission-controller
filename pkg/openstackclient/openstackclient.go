@@ -1,3 +1,18 @@
+// Copyright (c) 2021 Nokia Networks
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This implements CN-A Client for FSS Operator.
 package openstackclient
 
 import (
@@ -15,6 +30,7 @@ import (
 	"k8s.io/klog"
 )
 
+// AuthOpts
 type AuthOpts struct {
 	AuthURL      string                   `gcfg:"auth-url" mapstructure:"auth-url" name:"os-authURL" dependsOn:"os-password|os-trustID|os-applicationCredentialSecret|os-clientCertPath"`
 	UserID       string                   `gcfg:"user-id" mapstructure:"user-id" name:"os-userID" value:"optional" dependsOn:"os-password"`
@@ -30,6 +46,7 @@ type AuthOpts struct {
 	TLSInsecure  string                   `gcfg:"tls-insecure" mapstructure:"tls-insecure" name:"os-TLSInsecure" value:"optional" matches:"^true|false$"`
 }
 
+// ToAuthOptions
 func (authOpts AuthOpts) ToAuthOptions() gophercloud.AuthOptions {
 	opts := clientconfig.ClientOpts{
 		// this is needed to disable the clientconfig.AuthOptions func env detection
@@ -59,7 +76,7 @@ func (authOpts AuthOpts) ToAuthOptions() gophercloud.AuthOptions {
 }
 
 // NewOpenStackClient creates a new instance of the openstack client
-func NewOpenStackClient(cfg *AuthOpts, userAgent string, extraUserAgent ...string) (*gophercloud.ProviderClient, error) {
+func NewOpenStackClient(cfg *AuthOpts, _ string, _ ...string) (*gophercloud.ProviderClient, error) {
 	provider, err := openstack.NewClient(cfg.AuthURL)
 	if err != nil {
 		return nil, err

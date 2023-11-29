@@ -70,7 +70,7 @@ type Controller struct {
 	nadClientset *netattachdefClientset.Clientset
 }
 
-func StartWatchingHA(ignoreNamespaces *string) {
+func StartWatchingHA(_ *string) {
 }
 
 // StartWatching ...  Start prepares watchers and run their controllers, then waits for process termination signals

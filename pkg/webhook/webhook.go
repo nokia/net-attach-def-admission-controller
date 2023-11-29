@@ -229,7 +229,7 @@ func validateNetworkAttachmentDefinition(operation admissionv1.Operation, netAtt
 		return false, false, err
 	}
 
-	glog.V(5).Infof("validating NAD: %s", netAttachDef)
+	glog.V(5).Infof("validating NAD: %+v", netAttachDef)
 
 	var confBytes []byte
 	var mutationRequired bool = false

@@ -1,3 +1,18 @@
+// Copyright (c) 2021 Nokia Networks
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// This implements CN-B Client for FSS Operator.
 package fssclient
 
 import (
@@ -28,7 +43,7 @@ type AuthOpts struct {
 	Password    string
 	Clustername string `gcfg:"cluster-name"`
 	Restartmode string `gcfg:"restart-mode"`
-        Regionid    string
+	Regionid    string
 	Insecure    bool
 }
 
@@ -122,6 +137,9 @@ func (f *FssClient) DELETE(path string) (int, []byte, error) {
 		client.Transport = transCfg
 	}
 	response, err := client.Do(request)
+	if err != nil {
+		return 0, nil, err
+	}
 	defer response.Body.Close()
 	jsonRespData, err := ioutil.ReadAll(response.Body)
 	if err != nil {
@@ -382,7 +400,7 @@ func NewFssClient(k8sClientSet kubernetes.Interface, podNamespace string, cfg *A
 			AdminUp:  false,
 			Name:     "ncs-" + cfg.Clustername,
 			PluginID: f.plugin.ID,
-                        RegionID: cfg.Regionid,
+			RegionID: cfg.Regionid,
 		}
 		jsonRequest, _ := json.Marshal(f.deployment)
 		statusCode, jsonResponse, err := f.POST(deploymentPath, jsonRequest)
@@ -600,7 +618,7 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 
 			// Delete unknown tenant and associated mappings
 			if !knownObject {
-				klog.Warningf("Delete unknown tenant for workload %s from database: %s", fssWorkloadEvpnId, localTenant)
+				klog.Warningf("Delete unknown tenant for workload %s from database: %+v", fssWorkloadEvpnId, localTenant)
 				delete(f.database.tenants, fssWorkloadEvpnId)
 				delete(f.database.workloadMapping, localTenant.FssWorkloadEvpnName)
 				delete(f.database.subnetMapping, fssWorkloadEvpnId)
@@ -632,7 +650,7 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 
 			// Delete unknown subnet and associated labels and attached ports
 			if !knownObject {
-				klog.Warningf("Delete unknown subnet %s from database: %s", fssSubnetID, localSubnet)
+				klog.Warningf("Delete unknown subnet %s from database: %+v", fssSubnetID, localSubnet)
 				delete(f.database.subnets, fssSubnetID)
 
 				klog.Warningf("Delete labels and attached ports associated with subnet %s from database", fssSubnetID)
