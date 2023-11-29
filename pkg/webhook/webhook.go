@@ -232,7 +232,7 @@ func validateNetworkAttachmentDefinition(operation admissionv1.Operation, netAtt
 	glog.V(5).Infof("validating NAD: %+v", netAttachDef)
 
 	var confBytes []byte
-	var mutationRequired bool = false
+	mutationRequired := false
 	if netAttachDef.Spec.Config != "" {
 		// try to unmarshal config into NetworkConfig or NetworkConfigList
 		//  using actual code from libcni - if succesful, it means that the config

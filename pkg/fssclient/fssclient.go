@@ -566,8 +566,8 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 				}
 				// delete lag host ports at last
 				for nodeName, lagPortsInNode := range lagPorts {
-					for lagPortName, lagPortId := range lagPortsInNode {
-						u := hostPortPath + "/" + lagPortId
+					for lagPortName, lagPortID := range lagPortsInNode {
+						u := hostPortPath + "/" + lagPortID
 						klog.Infof("Delete path=%s", u)
 						statusCode, _, err := f.DELETE(u)
 						if err != nil {
@@ -668,8 +668,8 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 				if exists {
 					delete(f.database.hostPortLabels, fssSubnetID)
 
-					for _, hostPortLabelId := range hostPortLabelIDByVlan {
-						delete(f.database.attachedPorts, hostPortLabelId)
+					for _, hostPortLabelID := range hostPortLabelIDByVlan {
+						delete(f.database.attachedPorts, hostPortLabelID)
 					}
 				}
 			}
@@ -766,8 +766,8 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 	}
 	// delete lag ports at the last
 	for nodeName, lagPortsToDelete := range lagPorts {
-		for lagPortName, lagPortId := range lagPortsToDelete {
-			u := hostPortPath + "/" + lagPortId
+		for lagPortName, lagPortID := range lagPortsToDelete {
+			u := hostPortPath + "/" + lagPortID
 			klog.Warningf("Delete unknown hostPort in server: %s", u)
 			statusCode, _, err := f.DELETE(u)
 			if err != nil {
@@ -806,6 +806,7 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 	return nil
 }
 
+// CreateSubnetInterface creates VLAN interface (host port label)
 func (f *FssClient) CreateSubnetInterface(fssWorkloadEvpnName string, fssSubnetName string, vlanID int) (string, string, error) {
 	fssSubnetID := ""
 	hostPortLabelID := ""
@@ -904,7 +905,7 @@ func (f *FssClient) CreateSubnetInterface(fssWorkloadEvpnName string, fssSubnetN
 	return fssSubnetID, hostPortLabel.ID, nil
 }
 
-// GetSubnetInterface returns VLAN interface if exists
+// GetSubnetInterface returns VLAN interface (host port label) if exists
 func (f *FssClient) GetSubnetInterface(fssWorkloadEvpnName string, fssSubnetName string, vlanID int) (string, string, string, bool) {
 	fssWorkloadEvpnID, ok := f.database.workloadMapping[fssWorkloadEvpnName]
 	if !ok {
@@ -929,7 +930,7 @@ func (f *FssClient) GetSubnetInterface(fssWorkloadEvpnName string, fssSubnetName
 	return fssWorkloadEvpnID, fssSubnetID, hostPortLabelID, true
 }
 
-// AttachSubnetInterface attaches VLAN interface
+// AttachSubnetInterface attaches VLAN interface (host port label) to subnet
 func (f *FssClient) AttachSubnetInterface(fssSubnetID string, vlanID int, hostPortLabelID string) error {
 	klog.Infof("Attach hostPortLabel %s to fssSubnetID %s for vlanID %d", hostPortLabelID, fssSubnetID, vlanID)
 	attachedLabels := f.database.attachedLabels[fssSubnetID]
@@ -969,7 +970,7 @@ func (f *FssClient) AttachSubnetInterface(fssSubnetID string, vlanID int, hostPo
 	return nil
 }
 
-// DeleteSubnetInterface deletes VLAN interface
+// DeleteSubnetInterface deletes VLAN interface (host port label)
 func (f *FssClient) DeleteSubnetInterface(fssWorkloadEvpnID string, fssSubnetID string, vlanID int, hostPortLabelID string, requestType datatypes.NadAction) error {
 	klog.Infof("Delete hostPortLabel %s for fssSubnetID %s and vlanID %d", hostPortLabelID, fssSubnetID, vlanID)
 	var result error
@@ -1160,7 +1161,7 @@ func (f *FssClient) DetachHostPort(hostPortLabelID string, node string, port dat
 	return result
 }
 
-// DetachNode detaches host port by node
+// DetachNode delete host port by node
 func (f *FssClient) DetachNode(nodeName string) {
 	var lagPorts = make(map[string]HostPortIDByName)
 	for k, v := range f.database.hostPorts[nodeName] {

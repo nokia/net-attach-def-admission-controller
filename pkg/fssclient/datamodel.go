@@ -12,7 +12,7 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Packet fssclient - FSS Connect REST API interface.
+// Package fssclient - FSS Connect REST API interface.
 package fssclient
 
 import (
