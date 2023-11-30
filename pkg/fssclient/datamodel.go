@@ -1,3 +1,18 @@
+// Copyright (c) 2021 Nokia Networks
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Package fssclient - FSS Connect REST API interface.
 package fssclient
 
 import (
@@ -5,6 +20,7 @@ import (
 	"strings"
 )
 
+// LoginResponse in FSS Connect API
 type LoginResponse struct {
 	AccessToken      string `json:"access_token"`
 	IDToken          string `json:"id_token"`
@@ -17,7 +33,10 @@ type LoginResponse struct {
 	NotBeforePolicy  int    `json:"not-before-policy"`
 }
 
+// Plugins store plugins
 type Plugins []Plugin
+
+// Plugin is FSS Connect API Data Type
 type Plugin struct {
 	ConnectType            string `json:"connectType"`
 	Name                   string `json:"name"`
@@ -38,12 +57,15 @@ type Plugin struct {
 	*/
 }
 
+// Deployments store deployments
 type Deployments []Deployment
+
+// Deployment is FSS Connect API Data Type
 type Deployment struct {
 	AdminUp  bool   `json:"adminUp"`
 	Name     string `json:"name"`
 	PluginID string `json:"pluginID"`
-        RegionID string `json:"regionId"`
+	RegionID string `json:"regionId"`
 	ID       string `json:"id"`
 	Status   string `json:"status"`
 	/*
@@ -56,7 +78,10 @@ type Deployment struct {
 	*/
 }
 
+// Tenants store tenants
 type Tenants []Tenant
+
+// Tenant is FSS Connect API Data Type
 type Tenant struct {
 	DeploymentID        string `json:"deploymentId"`
 	FssWorkloadEvpnID   string `json:"fssWorkloadEvpnId"`
@@ -72,7 +97,10 @@ type Tenant struct {
 	*/
 }
 
+// Subnets store subnets
 type Subnets []Subnet
+
+// Subnet is FSS Connect API Data Type
 type Subnet struct {
 	DeploymentID  string `json:"deploymentId"`
 	TenantID      string `json:"tenantId"`
@@ -89,7 +117,10 @@ type Subnet struct {
 	*/
 }
 
+// HostPortLabels store host port labels
 type HostPortLabels []HostPortLabel
+
+// HostPortLabel is FSS Connect API Data Type
 type HostPortLabel struct {
 	DeploymentID string `json:"deploymentId"`
 	Name         string `json:"name"`
@@ -102,7 +133,10 @@ type HostPortLabel struct {
 	*/
 }
 
+// SubnetAssociations store subnet associations
 type SubnetAssociations []SubnetAssociation
+
+// SubnetAssociation is FSS Connect API Data Type
 type SubnetAssociation struct {
 	DeploymentID    string `json:"deploymentId"`
 	HostPortLabelID string `json:"hostPortLabelID"`
@@ -118,7 +152,10 @@ type SubnetAssociation struct {
 	*/
 }
 
+// HostPorts store host port
 type HostPorts []HostPort
+
+// HostPort is FSS Connect API Data Type
 type HostPort struct {
 	DeploymentID     string   `json:"deploymentId"`
 	HostName         string   `json:"hostName"`
@@ -137,7 +174,10 @@ type HostPort struct {
 	*/
 }
 
+// HostPortAssociations store host port associations
 type HostPortAssociations []HostPortAssociation
+
+// HostPortAssociation is FSS Connection API Data Type
 type HostPortAssociation struct {
 	DeploymentID    string `json:"deploymentId"`
 	HostPortID      string `json:"hostPortId"`
@@ -151,6 +191,7 @@ type HostPortAssociation struct {
 	*/
 }
 
+// ErrorResponse in FSS Connect API
 type ErrorResponse struct {
 	AdditionalInfo string   `json:"additional_info"`
 	Detail         string   `json:"detail"`
@@ -161,15 +202,22 @@ type ErrorResponse struct {
 	Type           string   `json:"type"`
 }
 
+// Vlan is FSS Connect API Data Type
 type Vlan struct {
 	vlanType  string
 	vlanValue string
 }
 
+// HostPortLabelIDByVlan stores host port label ID by vlan
 type HostPortLabelIDByVlan map[Vlan]string
+
+// HostPortIDByName stores host port ID by name
 type HostPortIDByName map[string]string
+
+// HostPortAssociationIDByPort stores host port association ID by port
 type HostPortAssociationIDByPort map[string]string
 
+// Database defines the data model
 type Database struct {
 	// Tenants by fssWorkloadEvpnId
 	tenants map[string]Tenant
@@ -189,6 +237,7 @@ type Database struct {
 	subnetMapping map[string]map[string]string
 }
 
+// EncodedDatabase defines JSON encoded data model
 type EncodedDatabase struct {
 	Tenants         map[string]map[string]interface{}
 	Subnets         map[string]map[string]interface{}
@@ -312,7 +361,7 @@ func (d *Database) decode(jsonString []byte) (Database, error) {
 	for k, v := range encoded.WorkloadMapping {
 		decoded.workloadMapping[k] = v
 	}
-	
+
 	decoded.subnetMapping = make(map[string]map[string]string)
 	for k, v := range encoded.SubnetMapping {
 		decoded.subnetMapping[k] = v

@@ -70,7 +70,8 @@ type Controller struct {
 	nadClientset *netattachdefClientset.Clientset
 }
 
-func StartWatchingHA(ignoreNamespaces *string) {
+// StartWatchingHA is added to skip single controller metric collection for now
+func StartWatchingHA(_ *string) {
 }
 
 // StartWatching ...  Start prepares watchers and run their controllers, then waits for process termination signals

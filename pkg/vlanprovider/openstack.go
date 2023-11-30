@@ -1,3 +1,18 @@
+// Copyright (c) 2021 Nokia Networks
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Package vlanprovider - Openstack interface
 package vlanprovider
 
 import (
@@ -23,6 +38,7 @@ import (
 	"k8s.io/klog"
 )
 
+// VNic is not used yet
 type VNic struct {
 	Name       string
 	MacAddress string
@@ -39,6 +55,7 @@ type CloudConfig struct {
 	Global client.AuthOpts
 }
 
+// OpenstackVlanProvider stores Openstack Client Config
 type OpenstackVlanProvider struct {
 	configFile string
 	epOpts     *gophercloud.EndpointOpts
@@ -46,6 +63,7 @@ type OpenstackVlanProvider struct {
 	network    *gophercloud.ServiceClient
 }
 
+// Connect method implemented by Openstack Client
 func (p *OpenstackVlanProvider) Connect(kubernetes.Interface, string) error {
 	// Read Cloud Config
 	f, err := os.Open(p.configFile)
@@ -81,6 +99,7 @@ func (p *OpenstackVlanProvider) Connect(kubernetes.Interface, string) error {
 	return nil
 }
 
+// UpdateNodeTopology method implemented by Openstack Client
 func (p *OpenstackVlanProvider) UpdateNodeTopology(name string, topology string) (string, error) {
 	// Read in node topology from node agent
 	var nodeTopology datatypes.NodeTopology
@@ -167,7 +186,7 @@ func (p *OpenstackVlanProvider) UpdateNodeTopology(name string, topology string)
 					nic["physnet"] = net.PhysicalNetwork
 					nodeTopology.SriovPools[net.Name][iface.MACAddr] = nic
 				} else { // vfio
-					for poolName, _ := range nodeTopology.SriovPools {
+					for poolName := range nodeTopology.SriovPools {
 						if strings.Contains(poolName, net.Name) {
 							if nic, ok := nodeTopology.SriovPools[poolName][iface.MACAddr]; ok {
 								nic["trunk-id"] = trunk.ID
@@ -188,18 +207,22 @@ func (p *OpenstackVlanProvider) UpdateNodeTopology(name string, topology string)
 	return string(updated), nil
 }
 
-func (p *OpenstackVlanProvider) Attach(project, network, vlanRange string, nodesInfo map[string]datatypes.NodeTopology, requestType datatypes.NadAction) (map[string]error, error) {
+// Attach method implemented by Openstack Client
+func (p *OpenstackVlanProvider) Attach(string, string, string, map[string]datatypes.NodeTopology, datatypes.NadAction) (map[string]error, error) {
 	nodesStatus := make(map[string]error)
 	return nodesStatus, nil
 }
 
-func (p *OpenstackVlanProvider) Detach(project, network, vlanRange string, nodesInfo map[string]datatypes.NodeTopology, requestType datatypes.NadAction) (map[string]error, error) {
+// Detach method implemented by Openstack Client
+func (p *OpenstackVlanProvider) Detach(string, string, string, map[string]datatypes.NodeTopology, datatypes.NadAction) (map[string]error, error) {
 	nodesStatus := make(map[string]error)
 	return nodesStatus, nil
 }
 
-func (p *OpenstackVlanProvider) DetachNode(nodeName string) {
+// DetachNode method implemented by Openstack Client
+func (p *OpenstackVlanProvider) DetachNode(string) {
 }
 
+// TxnDone method implemented by Openstack Client
 func (p *OpenstackVlanProvider) TxnDone() {
 }

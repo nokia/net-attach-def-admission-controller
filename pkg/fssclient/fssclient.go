@@ -1,3 +1,18 @@
+// Copyright (c) 2021 Nokia Networks
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Package fssclient implements FSS REST API interface for FSS Operator.
 package fssclient
 
 import (
@@ -22,16 +37,18 @@ import (
 	"k8s.io/client-go/kubernetes"
 )
 
+// AuthOpts is adapted from Openstack Client
 type AuthOpts struct {
 	AuthURL     string `gcfg:"auth-url" mapstructure:"auth-url"`
 	Username    string
 	Password    string
 	Clustername string `gcfg:"cluster-name"`
 	Restartmode string `gcfg:"restart-mode"`
-        Regionid    string
+	Regionid    string
 	Insecure    bool
 }
 
+// FssClient defines FSS REST API Client
 type FssClient struct {
 	cfg                AuthOpts
 	rootURL            string
@@ -58,6 +75,7 @@ const (
 	subnetAssociationPath   = "/rest/connect/api/v1/plugins/hostportlabelsubnetassociations"
 )
 
+// GetAccessToken checks if access token is still valid
 func (f *FssClient) GetAccessToken() error {
 	now := time.Now()
 	// Check if refreshToken expiried
@@ -73,6 +91,7 @@ func (f *FssClient) GetAccessToken() error {
 	return nil
 }
 
+// GET implements GET method
 func (f *FssClient) GET(path string) (int, []byte, error) {
 	err := f.GetAccessToken()
 	if err != nil {
@@ -103,6 +122,7 @@ func (f *FssClient) GET(path string) (int, []byte, error) {
 	return response.StatusCode, jsonRespData, err
 }
 
+// DELETE implements DELETE method
 func (f *FssClient) DELETE(path string) (int, []byte, error) {
 	err := f.GetAccessToken()
 	if err != nil {
@@ -122,6 +142,9 @@ func (f *FssClient) DELETE(path string) (int, []byte, error) {
 		client.Transport = transCfg
 	}
 	response, err := client.Do(request)
+	if err != nil {
+		return 0, nil, err
+	}
 	defer response.Body.Close()
 	jsonRespData, err := ioutil.ReadAll(response.Body)
 	if err != nil {
@@ -130,6 +153,7 @@ func (f *FssClient) DELETE(path string) (int, []byte, error) {
 	return response.StatusCode, jsonRespData, err
 }
 
+// POST implements POST method
 func (f *FssClient) POST(path string, jsonReqData []byte) (int, []byte, error) {
 	err := f.GetAccessToken()
 	if err != nil {
@@ -187,6 +211,7 @@ func (f *FssClient) setConfigMap(name string, data []byte) error {
 	return err
 }
 
+// TxnDone marks end of a transaction
 func (f *FssClient) TxnDone() {
 	jsonString, err := f.database.encode()
 	if err != nil {
@@ -252,6 +277,7 @@ func (f *FssClient) login(loginURL string) error {
 	return nil
 }
 
+// NewFssClient creates a new instance of FSS REST API Client
 func NewFssClient(k8sClientSet kubernetes.Interface, podNamespace string, cfg *AuthOpts) (*FssClient, error) {
 	u, err := url.Parse(cfg.AuthURL)
 	if err != nil {
@@ -382,7 +408,7 @@ func NewFssClient(k8sClientSet kubernetes.Interface, podNamespace string, cfg *A
 			AdminUp:  false,
 			Name:     "ncs-" + cfg.Clustername,
 			PluginID: f.plugin.ID,
-                        RegionID: cfg.Regionid,
+			RegionID: cfg.Regionid,
 		}
 		jsonRequest, _ := json.Marshal(f.deployment)
 		statusCode, jsonResponse, err := f.POST(deploymentPath, jsonRequest)
@@ -540,8 +566,8 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 				}
 				// delete lag host ports at last
 				for nodeName, lagPortsInNode := range lagPorts {
-					for lagPortName, lagPortId := range lagPortsInNode {
-						u := hostPortPath + "/" + lagPortId
+					for lagPortName, lagPortID := range lagPortsInNode {
+						u := hostPortPath + "/" + lagPortID
 						klog.Infof("Delete path=%s", u)
 						statusCode, _, err := f.DELETE(u)
 						if err != nil {
@@ -587,12 +613,12 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 	}
 	var serverTenants Tenants
 	json.Unmarshal(jsonResponse, &serverTenants)
-	for fssWorkloadEvpnId, localTenant := range f.database.tenants {
+	for fssWorkloadEvpnID, localTenant := range f.database.tenants {
 		if localTenant.DeploymentID == deploymentID {
 			// Check if local Tenant is known to the server
 			knownObject := false
 			for _, serverTenant := range serverTenants {
-				if fssWorkloadEvpnId == serverTenant.FssWorkloadEvpnID {
+				if fssWorkloadEvpnID == serverTenant.FssWorkloadEvpnID {
 					knownObject = true
 					break
 				}
@@ -600,10 +626,10 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 
 			// Delete unknown tenant and associated mappings
 			if !knownObject {
-				klog.Warningf("Delete unknown tenant for workload %s from database: %s", fssWorkloadEvpnId, localTenant)
-				delete(f.database.tenants, fssWorkloadEvpnId)
+				klog.Warningf("Delete unknown tenant for workload %s from database: %+v", fssWorkloadEvpnID, localTenant)
+				delete(f.database.tenants, fssWorkloadEvpnID)
 				delete(f.database.workloadMapping, localTenant.FssWorkloadEvpnName)
-				delete(f.database.subnetMapping, fssWorkloadEvpnId)
+				delete(f.database.subnetMapping, fssWorkloadEvpnID)
 
 				// hanging subnets will be deleted in the next step
 			}
@@ -632,7 +658,7 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 
 			// Delete unknown subnet and associated labels and attached ports
 			if !knownObject {
-				klog.Warningf("Delete unknown subnet %s from database: %s", fssSubnetID, localSubnet)
+				klog.Warningf("Delete unknown subnet %s from database: %+v", fssSubnetID, localSubnet)
 				delete(f.database.subnets, fssSubnetID)
 
 				klog.Warningf("Delete labels and attached ports associated with subnet %s from database", fssSubnetID)
@@ -642,8 +668,8 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 				if exists {
 					delete(f.database.hostPortLabels, fssSubnetID)
 
-					for _, hostPortLabelId := range hostPortLabelIDByVlan {
-						delete(f.database.attachedPorts, hostPortLabelId)
+					for _, hostPortLabelID := range hostPortLabelIDByVlan {
+						delete(f.database.attachedPorts, hostPortLabelID)
 					}
 				}
 			}
@@ -740,8 +766,8 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 	}
 	// delete lag ports at the last
 	for nodeName, lagPortsToDelete := range lagPorts {
-		for lagPortName, lagPortId := range lagPortsToDelete {
-			u := hostPortPath + "/" + lagPortId
+		for lagPortName, lagPortID := range lagPortsToDelete {
+			u := hostPortPath + "/" + lagPortID
 			klog.Warningf("Delete unknown hostPort in server: %s", u)
 			statusCode, _, err := f.DELETE(u)
 			if err != nil {
@@ -780,11 +806,12 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 	return nil
 }
 
-func (f *FssClient) CreateSubnetInterface(fssWorkloadEvpnName string, fssSubnetName string, vlanId int) (string, string, error) {
-	fssSubnetId := ""
+// CreateSubnetInterface creates VLAN interface (host port label)
+func (f *FssClient) CreateSubnetInterface(fssWorkloadEvpnName string, fssSubnetName string, vlanID int) (string, string, error) {
+	fssSubnetID := ""
 	hostPortLabelID := ""
 
-	fssWorkloadEvpnId, ok1 := f.database.workloadMapping[fssWorkloadEvpnName]
+	fssWorkloadEvpnID, ok1 := f.database.workloadMapping[fssWorkloadEvpnName]
 	if !ok1 {
 		// Create the tenant
 		klog.Infof("Create tenant for fssWorkloadEvpnName %s", fssWorkloadEvpnName)
@@ -797,29 +824,29 @@ func (f *FssClient) CreateSubnetInterface(fssWorkloadEvpnName string, fssSubnetN
 		jsonRequest, _ := json.Marshal(tenant)
 		statusCode, jsonResponse, err := f.POST(tenantPath, jsonRequest)
 		if err != nil {
-			return fssSubnetId, hostPortLabelID, err
+			return fssSubnetID, hostPortLabelID, err
 		}
 		if statusCode != 201 {
 			var errorResponse ErrorResponse
 			json.Unmarshal(jsonResponse, &errorResponse)
 			klog.Errorf("Tenant error: %+v", errorResponse)
-			return fssSubnetId, hostPortLabelID, fmt.Errorf("Create tenant failed with status=%d", statusCode)
+			return fssSubnetID, hostPortLabelID, fmt.Errorf("Create tenant failed with status=%d", statusCode)
 		}
 		json.Unmarshal(jsonResponse, &tenant)
 		klog.Infof("Tenant is created: %+v", tenant)
-		fssWorkloadEvpnId = tenant.FssWorkloadEvpnID
-		f.database.workloadMapping[fssWorkloadEvpnName] = fssWorkloadEvpnId
-		f.database.subnetMapping[fssWorkloadEvpnId] = make(map[string]string)
-		f.database.tenants[fssWorkloadEvpnId] = tenant
+		fssWorkloadEvpnID = tenant.FssWorkloadEvpnID
+		f.database.workloadMapping[fssWorkloadEvpnName] = fssWorkloadEvpnID
+		f.database.subnetMapping[fssWorkloadEvpnID] = make(map[string]string)
+		f.database.tenants[fssWorkloadEvpnID] = tenant
 	}
 
-	fssSubnetId, ok2 := f.database.subnetMapping[fssWorkloadEvpnId][fssSubnetName]
+	fssSubnetID, ok2 := f.database.subnetMapping[fssWorkloadEvpnID][fssSubnetName]
 	if !ok2 {
 		// Create the subnet
 		klog.Infof("Create subnet for fssSubnetName %s", fssSubnetName)
 		subnet := Subnet{
 			DeploymentID:  f.deployment.ID,
-			TenantID:      f.database.tenants[fssWorkloadEvpnId].ID,
+			TenantID:      f.database.tenants[fssWorkloadEvpnID].ID,
 			FssSubnetName: fssSubnetName,
 			Name:          "subnet-" + fssSubnetName,
 			FssManaged:    true,
@@ -827,87 +854,89 @@ func (f *FssClient) CreateSubnetInterface(fssWorkloadEvpnName string, fssSubnetN
 		jsonRequest, _ := json.Marshal(subnet)
 		statusCode, jsonResponse, err := f.POST(subnetPath, jsonRequest)
 		if err != nil {
-			return fssSubnetId, hostPortLabelID, err
+			return fssSubnetID, hostPortLabelID, err
 		}
 		if statusCode != 201 {
 			var errorResponse ErrorResponse
 			json.Unmarshal(jsonResponse, &errorResponse)
 			klog.Errorf("Subnet error: %+v", errorResponse)
-			return fssSubnetId, hostPortLabelID, fmt.Errorf("Create subnet failed with status=%d", statusCode)
+			return fssSubnetID, hostPortLabelID, fmt.Errorf("Create subnet failed with status=%d", statusCode)
 		}
 		json.Unmarshal(jsonResponse, &subnet)
 		klog.Infof("Subnet is created: %+v", subnet)
-		fssSubnetId = subnet.FssSubnetID
-		f.database.subnetMapping[fssWorkloadEvpnId][fssSubnetName] = fssSubnetId
-		f.database.subnets[fssSubnetId] = subnet
-		f.database.hostPortLabels[fssSubnetId] = make(HostPortLabelIDByVlan)
-		f.database.attachedLabels[fssSubnetId] = make(HostPortLabelIDByVlan)
+		fssSubnetID = subnet.FssSubnetID
+		f.database.subnetMapping[fssWorkloadEvpnID][fssSubnetName] = fssSubnetID
+		f.database.subnets[fssSubnetID] = subnet
+		f.database.hostPortLabels[fssSubnetID] = make(HostPortLabelIDByVlan)
+		f.database.attachedLabels[fssSubnetID] = make(HostPortLabelIDByVlan)
 	}
-	hostPortLabels := f.database.hostPortLabels[fssSubnetId]
+	hostPortLabels := f.database.hostPortLabels[fssSubnetID]
 	vlanType := "value"
-	vlanValue := strconv.Itoa(vlanId)
-	if vlanId == 0 {
+	vlanValue := strconv.Itoa(vlanID)
+	if vlanID == 0 {
 		vlanType = "untagged"
 		vlanValue = ""
 	}
 	vlan := Vlan{vlanType, vlanValue}
 	hostPortLabelID, ok3 := hostPortLabels[vlan]
 	if ok1 && ok2 && ok3 {
-		return fssSubnetId, hostPortLabelID, nil
+		return fssSubnetID, hostPortLabelID, nil
 	}
 	// Create the hostPortLabel
-	klog.Infof("Create hostPortLabel for fssSubnetId %s and vlanId %d", fssSubnetId, vlanId)
+	klog.Infof("Create hostPortLabel for fssSubnetID %s and vlanID %d", fssSubnetID, vlanID)
 	hostPortLabel := HostPortLabel{
 		DeploymentID: f.deployment.ID,
-		Name:         "label-" + fssSubnetId + "-" + strconv.Itoa(vlanId),
+		Name:         "label-" + fssSubnetID + "-" + strconv.Itoa(vlanID),
 	}
 	jsonRequest, _ := json.Marshal(hostPortLabel)
 	statusCode, jsonResponse, err := f.POST(hostPortLabelPath, jsonRequest)
 	if err != nil {
-		return fssSubnetId, hostPortLabelID, err
+		return fssSubnetID, hostPortLabelID, err
 	}
 	if statusCode != 201 {
 		var errorResponse ErrorResponse
 		json.Unmarshal(jsonResponse, &errorResponse)
 		klog.Errorf("HostPortLabel error: %+v", errorResponse)
-		return fssSubnetId, hostPortLabelID, fmt.Errorf("Create hostPortLabel failed with status=%d", statusCode)
+		return fssSubnetID, hostPortLabelID, fmt.Errorf("Create hostPortLabel failed with status=%d", statusCode)
 	}
 	json.Unmarshal(jsonResponse, &hostPortLabel)
 	klog.Infof("HostPortLabel is created: %+v", hostPortLabel)
-	f.database.hostPortLabels[fssSubnetId][vlan] = hostPortLabel.ID
-	return fssSubnetId, hostPortLabel.ID, nil
+	f.database.hostPortLabels[fssSubnetID][vlan] = hostPortLabel.ID
+	return fssSubnetID, hostPortLabel.ID, nil
 }
 
-func (f *FssClient) GetSubnetInterface(fssWorkloadEvpnName string, fssSubnetName string, vlanId int) (string, string, string, bool) {
-	fssWorkloadEvpnId, ok := f.database.workloadMapping[fssWorkloadEvpnName]
+// GetSubnetInterface returns VLAN interface (host port label) if exists
+func (f *FssClient) GetSubnetInterface(fssWorkloadEvpnName string, fssSubnetName string, vlanID int) (string, string, string, bool) {
+	fssWorkloadEvpnID, ok := f.database.workloadMapping[fssWorkloadEvpnName]
 	if !ok {
 		return "", "", "", false
 	}
-	fssSubnetId, ok := f.database.subnetMapping[fssWorkloadEvpnId][fssSubnetName]
+	fssSubnetID, ok := f.database.subnetMapping[fssWorkloadEvpnID][fssSubnetName]
 	if !ok {
-		return fssWorkloadEvpnId, "", "", false
+		return fssWorkloadEvpnID, "", "", false
 	}
-	hostPortLabels := f.database.hostPortLabels[fssSubnetId]
+	hostPortLabels := f.database.hostPortLabels[fssSubnetID]
 	vlanType := "value"
-	vlanValue := strconv.Itoa(vlanId)
-	if vlanId == 0 {
+	vlanValue := strconv.Itoa(vlanID)
+	if vlanID == 0 {
 		vlanType = "untagged"
 		vlanValue = ""
 	}
 	vlan := Vlan{vlanType, vlanValue}
 	hostPortLabelID, ok := hostPortLabels[vlan]
 	if !ok {
-		return fssWorkloadEvpnId, fssSubnetId, "", false
+		return fssWorkloadEvpnID, fssSubnetID, "", false
 	}
-	return fssWorkloadEvpnId, fssSubnetId, hostPortLabelID, true
+	return fssWorkloadEvpnID, fssSubnetID, hostPortLabelID, true
 }
 
-func (f *FssClient) AttachSubnetInterface(fssSubnetId string, vlanId int, hostPortLabelID string) error {
-	klog.Infof("Attach hostPortLabel %s to fssSubnetId %s for vlanId %d", hostPortLabelID, fssSubnetId, vlanId)
-	attachedLabels := f.database.attachedLabels[fssSubnetId]
+// AttachSubnetInterface attaches VLAN interface (host port label) to subnet
+func (f *FssClient) AttachSubnetInterface(fssSubnetID string, vlanID int, hostPortLabelID string) error {
+	klog.Infof("Attach hostPortLabel %s to fssSubnetID %s for vlanID %d", hostPortLabelID, fssSubnetID, vlanID)
+	attachedLabels := f.database.attachedLabels[fssSubnetID]
 	vlanType := "value"
-	vlanValue := strconv.Itoa(vlanId)
-	if vlanId == 0 {
+	vlanValue := strconv.Itoa(vlanID)
+	if vlanID == 0 {
 		vlanType = "untagged"
 		vlanValue = ""
 	}
@@ -920,7 +949,7 @@ func (f *FssClient) AttachSubnetInterface(fssSubnetId string, vlanId int, hostPo
 	subnetAssociation := SubnetAssociation{
 		DeploymentID:    f.deployment.ID,
 		HostPortLabelID: hostPortLabelID,
-		SubnetID:        f.database.subnets[fssSubnetId].ID,
+		SubnetID:        f.database.subnets[fssSubnetID].ID,
 		VlanType:        vlanType,
 		VlanValue:       vlanValue,
 	}
@@ -937,22 +966,23 @@ func (f *FssClient) AttachSubnetInterface(fssSubnetId string, vlanId int, hostPo
 	}
 	json.Unmarshal(jsonResponse, &subnetAssociation)
 	klog.Infof("SubnetAssociation is created: %+v", subnetAssociation)
-	f.database.attachedLabels[fssSubnetId][vlan] = subnetAssociation.HostPortLabelID
+	f.database.attachedLabels[fssSubnetID][vlan] = subnetAssociation.HostPortLabelID
 	return nil
 }
 
-func (f *FssClient) DeleteSubnetInterface(fssWorkloadEvpnId string, fssSubnetId string, vlanId int, hostPortLabelID string, requestType datatypes.NadAction) error {
-	klog.Infof("Delete hostPortLabel %s for fssSubnetId %s and vlanId %d", hostPortLabelID, fssSubnetId, vlanId)
+// DeleteSubnetInterface deletes VLAN interface (host port label)
+func (f *FssClient) DeleteSubnetInterface(fssWorkloadEvpnID string, fssSubnetID string, vlanID int, hostPortLabelID string, requestType datatypes.NadAction) error {
+	klog.Infof("Delete hostPortLabel %s for fssSubnetID %s and vlanID %d", hostPortLabelID, fssSubnetID, vlanID)
 	var result error
 	vlanType := "value"
-	vlanValue := strconv.Itoa(vlanId)
-	if vlanId == 0 {
+	vlanValue := strconv.Itoa(vlanID)
+	if vlanID == 0 {
 		vlanType = "untagged"
 		vlanValue = ""
 	}
 	vlan := Vlan{vlanType, vlanValue}
-	_, ok := f.database.attachedLabels[fssSubnetId][vlan]
-	if ok && hostPortLabelID == f.database.attachedLabels[fssSubnetId][vlan] {
+	_, ok := f.database.attachedLabels[fssSubnetID][vlan]
+	if ok && hostPortLabelID == f.database.attachedLabels[fssSubnetID][vlan] {
 		// HostPortLabel: When deleting a HostPortLabel, the associations to Subnet and HostPort are automatically deleted.
 		u := hostPortLabelPath + "/" + hostPortLabelID
 		statusCode, _, err := f.DELETE(u)
@@ -967,8 +997,8 @@ func (f *FssClient) DeleteSubnetInterface(fssWorkloadEvpnId string, fssSubnetId 
 		klog.Infof("HostPortLabel %s does not exists", hostPortLabelID)
 	}
 	// Local deletion: hostPortLabels, attacheLabels, attachedHostPorts
-	delete(f.database.hostPortLabels[fssSubnetId], vlan)
-	delete(f.database.attachedLabels[fssSubnetId], vlan)
+	delete(f.database.hostPortLabels[fssSubnetID], vlan)
+	delete(f.database.attachedLabels[fssSubnetID], vlan)
 	delete(f.database.attachedPorts, hostPortLabelID)
 
 	// In order to prevent hanging resource on the FSS connect, we need to delete the subnet and tenant upon last NAD deletion:
@@ -979,8 +1009,8 @@ func (f *FssClient) DeleteSubnetInterface(fssWorkloadEvpnId string, fssSubnetId 
 	// when last subnet is removed from tenant, we will remove the tenant from FSS connnect
 	if requestType == datatypes.DeleteDetach {
 		// Check if no more attached label in the subnet, delete the subnet
-		if len(f.database.attachedLabels[fssSubnetId]) == 0 {
-			subnet, ok := f.database.subnets[fssSubnetId]
+		if len(f.database.attachedLabels[fssSubnetID]) == 0 {
+			subnet, ok := f.database.subnets[fssSubnetID]
 			if ok {
 				u := subnetPath + "/" + subnet.ID
 				statusCode, _, err := f.DELETE(u)
@@ -988,14 +1018,14 @@ func (f *FssClient) DeleteSubnetInterface(fssWorkloadEvpnId string, fssSubnetId 
 					klog.Errorf("Delete subnet failed with status=%d: %s", statusCode, err.Error())
 				}
 				klog.Infof("subnet %s is deleted", subnet.ID)
-				delete(f.database.subnetMapping[fssWorkloadEvpnId], subnet.FssSubnetName)
-				delete(f.database.subnets, fssSubnetId)
-				delete(f.database.hostPortLabels, fssSubnetId)
-				delete(f.database.attachedLabels, fssSubnetId)
+				delete(f.database.subnetMapping[fssWorkloadEvpnID], subnet.FssSubnetName)
+				delete(f.database.subnets, fssSubnetID)
+				delete(f.database.hostPortLabels, fssSubnetID)
+				delete(f.database.attachedLabels, fssSubnetID)
 			}
 			// Check if no more subnet in the tenant, delete the tenant
-			if len(f.database.subnetMapping[fssWorkloadEvpnId]) == 0 {
-				tenant, ok := f.database.tenants[fssWorkloadEvpnId]
+			if len(f.database.subnetMapping[fssWorkloadEvpnID]) == 0 {
+				tenant, ok := f.database.tenants[fssWorkloadEvpnID]
 				if ok {
 					u := tenantPath + "/" + tenant.ID
 					statusCode, _, err := f.DELETE(u)
@@ -1004,8 +1034,8 @@ func (f *FssClient) DeleteSubnetInterface(fssWorkloadEvpnId string, fssSubnetId 
 					}
 					klog.Infof("tenant %s is deleted", tenant.ID)
 					delete(f.database.workloadMapping, tenant.FssWorkloadEvpnName)
-					delete(f.database.subnetMapping, fssWorkloadEvpnId)
-					delete(f.database.tenants, fssWorkloadEvpnId)
+					delete(f.database.subnetMapping, fssWorkloadEvpnID)
+					delete(f.database.tenants, fssWorkloadEvpnID)
 				}
 			}
 		}
@@ -1013,7 +1043,8 @@ func (f *FssClient) DeleteSubnetInterface(fssWorkloadEvpnId string, fssSubnetId 
 	return result
 }
 
-func (f *FssClient) CreateHostPort(node string, port datatypes.JsonNic, isLag bool, parentHostPortID string) (string, error) {
+// CreateHostPort creates host port
+func (f *FssClient) CreateHostPort(node string, port datatypes.JSONNic, isLag bool, parentHostPortID string) (string, error) {
 	// Check if port exists
 	portName := port["name"].(string)
 	hostPortID, ok := f.GetHostPort(node, portName)
@@ -1047,6 +1078,7 @@ func (f *FssClient) CreateHostPort(node string, port datatypes.JsonNic, isLag bo
 	return hostPortID, nil
 }
 
+// GetHostPort returns host port if exists
 func (f *FssClient) GetHostPort(node string, port string) (string, bool) {
 	hostPorts, ok := f.database.hostPorts[node]
 	if !ok {
@@ -1061,7 +1093,8 @@ func (f *FssClient) GetHostPort(node string, port string) (string, bool) {
 	return hostPortID, true
 }
 
-func (f *FssClient) AttachHostPort(hostPortLabelID string, node string, port datatypes.JsonNic) error {
+// AttachHostPort attaches host port by host port label
+func (f *FssClient) AttachHostPort(hostPortLabelID string, node string, port datatypes.JSONNic) error {
 	// Check if port exists
 	portName := port["name"].(string)
 	hostPortID, ok := f.GetHostPort(node, portName)
@@ -1101,7 +1134,8 @@ func (f *FssClient) AttachHostPort(hostPortLabelID string, node string, port dat
 	return nil
 }
 
-func (f *FssClient) DetachHostPort(hostPortLabelID string, node string, port datatypes.JsonNic) error {
+// DetachHostPort detaches host port by host port label
+func (f *FssClient) DetachHostPort(hostPortLabelID string, node string, port datatypes.JSONNic) error {
 	var result error
 	// Check if port exists
 	portName := port["name"].(string)
@@ -1127,6 +1161,7 @@ func (f *FssClient) DetachHostPort(hostPortLabelID string, node string, port dat
 	return result
 }
 
+// DetachNode delete host port by node
 func (f *FssClient) DetachNode(nodeName string) {
 	var lagPorts = make(map[string]HostPortIDByName)
 	for k, v := range f.database.hostPorts[nodeName] {

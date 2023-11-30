@@ -21,16 +21,16 @@ const (
 	sriovConfigFile = "/etc/pcidp/config.json"
 )
 
-type SriovResourceList struct {
-	Resources []SriovResource `json:"resourceList"`
+type sriovResourceList struct {
+	Resources []sriovResource `json:"resourceList"`
 }
 
-type SriovResource struct {
+type sriovResource struct {
 	ResourceName string         `json:"resourceName"`
-	Selectors    SriovSelectors `json:"selectors"`
+	Selectors    sriovSelectors `json:"selectors"`
 }
 
-type SriovSelectors struct {
+type sriovSelectors struct {
 	PCIAddresses []string `json:"pciAddresses,omitempty"`
 	PFNames      []string `json:"pfNames,omitempty"`
 	RootDevices  []string `json:"rootDevices,omitempty"`
@@ -94,8 +94,8 @@ func createVlanInterface(vlanMap map[string][]string, nadName string, vlanIfName
 	vlan := netlink.Vlan{}
 	vlan.ParentIndex = link.Attrs().Index
 	vlan.Name = vlanIfName
-	vlanId, _ := strconv.Atoi(m[1])
-	vlan.VlanId = vlanId
+	vlanID, _ := strconv.Atoi(m[1])
+	vlan.VlanId = vlanID
 	err = netlink.LinkAdd(&vlan)
 	if err != nil {
 		return 0, err
@@ -207,7 +207,7 @@ func getNodeTopology(provider string) ([]byte, error) {
 		if bondName != "" {
 			var tmp []byte
 			tmp, _ = json.Marshal(nic)
-			var jsonNic datatypes.JsonNic
+			var jsonNic datatypes.JSONNic
 			json.Unmarshal(tmp, &jsonNic)
 			if provider == "openstack" {
 				topology.Bonds[bondName].Ports[nic.MacAddress] = jsonNic
@@ -221,7 +221,7 @@ func getNodeTopology(provider string) ([]byte, error) {
 	if err != nil {
 		klog.Errorf("Error when getting sriovdp config file %s", sriovConfigFile)
 	} else {
-		var resourceList SriovResourceList
+		var resourceList sriovResourceList
 		err := json.Unmarshal(file, &resourceList)
 		if err != nil {
 			klog.Errorf("Error when reading sriovdp config file %s", sriovConfigFile)
@@ -251,7 +251,7 @@ func getNodeTopology(provider string) ([]byte, error) {
 					if ok {
 						var tmp []byte
 						tmp, _ = json.Marshal(nic)
-						var jsonNic datatypes.JsonNic
+						var jsonNic datatypes.JSONNic
 						json.Unmarshal(tmp, &jsonNic)
 						if provider == "openstack" {
 							topology.SriovPools[resource.ResourceName][nic.MacAddress] = jsonNic

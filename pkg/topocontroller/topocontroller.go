@@ -1,3 +1,18 @@
+// Copyright (c) 2021 Nokia Networks
+//
+// Licensed under the Apache License, Version 2.0 (the "License");
+// you may not use this file except in compliance with the License.
+// You may obtain a copy of the License at
+//
+//     http://www.apache.org/licenses/LICENSE-2.0
+//
+// Unless required by applicable law or agreed to in writing, software
+// distributed under the License is distributed on an "AS IS" BASIS,
+// WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+// See the License for the specific language governing permissions and
+// limitations under the License.
+
+// Package topocontroller implements FSS Operator.
 package topocontroller
 
 import (
@@ -27,6 +42,7 @@ const (
 	controllerAgentName = "net-attach-def-topocontroller"
 )
 
+// PodInfo stores FSS Operator pod information
 type PodInfo struct {
 	NodeName       string
 	PodNamespace   string
@@ -35,9 +51,9 @@ type PodInfo struct {
 	VlanMap        map[string][]string
 }
 
-type NetworkStatus map[string][]string
+type networkStatusType map[string][]string
 
-type WorkItem struct {
+type workItemType struct {
 	action datatypes.NadAction
 	oldNad *netattachdef.NetworkAttachmentDefinition
 	newNad *netattachdef.NetworkAttachmentDefinition
@@ -116,7 +132,7 @@ func (c *TopologyController) handleNodeDeleteEvent(obj interface{}) {
 		return
 	}
 	klog.Infof("Handle NODE DELETE %s", node.ObjectMeta.Name)
-	workItem := WorkItem{action: datatypes.NodeDetach, node: node}
+	workItem := workItemType{action: datatypes.NodeDetach, node: node}
 	c.workqueue.Add(workItem)
 }
 
@@ -146,11 +162,11 @@ func (c *TopologyController) handleNodeUpdateEvent(oldObj, newObj interface{}) {
 		return
 	}
 	if topo1 != topo {
-                if ok1 {
-                        klog.Infof("Node Topology Change, detach old node first %s", oldNode.ObjectMeta.Name)
-                        workItemOldNode := WorkItem{action: datatypes.NodeDetach, node: oldNode}
-                        c.workqueue.Add(workItemOldNode)
-                }
+		if ok1 {
+			klog.Infof("Node Topology Change, detach old node first %s", oldNode.ObjectMeta.Name)
+			workItemOldNode := workItemType{action: datatypes.NodeDetach, node: oldNode}
+			c.workqueue.Add(workItemOldNode)
+		}
 		// No-op for BM
 		updated, err := c.vlanProvider.UpdateNodeTopology(newNode.ObjectMeta.Name, topo)
 		if err != nil {
@@ -168,7 +184,7 @@ func (c *TopologyController) handleNodeUpdateEvent(oldObj, newObj interface{}) {
 			}
 		}
 		klog.Infof("Handle NODE CREATE %s", newNode.ObjectMeta.Name)
-		workItem := WorkItem{action: datatypes.NodeAttach, node: newNode}
+		workItem := workItemType{action: datatypes.NodeAttach, node: newNode}
 		c.workqueue.Add(workItem)
 	}
 	// Check node label change
@@ -179,7 +195,7 @@ func (c *TopologyController) handleNodeUpdateEvent(oldObj, newObj interface{}) {
 		return
 	}
 	klog.Infof("Handle NODE UPDATE %s", newNode.ObjectMeta.Name)
-	workItem := WorkItem{action: datatypes.NodeAttachDetach, node: newNode}
+	workItem := workItemType{action: datatypes.NodeAttachDetach, node: newNode}
 	c.workqueue.Add(workItem)
 }
 
@@ -230,7 +246,7 @@ func (c *TopologyController) handleNetAttachDefAddEvent(obj interface{}) {
 			}
 		}
 	}
-	workItem := WorkItem{action: datatypes.CreateAttach, newNad: nad}
+	workItem := workItemType{action: datatypes.CreateAttach, newNad: nad}
 	c.workqueue.Add(workItem)
 }
 
@@ -281,7 +297,7 @@ func (c *TopologyController) handleNetAttachDefDeleteEvent(obj interface{}) {
 			}
 		}
 	}
-	workItem := WorkItem{action: datatypes.DeleteDetach, oldNad: nad, newNad: nad}
+	workItem := workItemType{action: datatypes.DeleteDetach, oldNad: nad, newNad: nad}
 	c.workqueue.Add(workItem)
 }
 
@@ -374,7 +390,7 @@ func (c *TopologyController) handleNetAttachDefUpdateEvent(oldObj, newObj interf
 			}
 		}
 	}
-	workItem := WorkItem{action: updateAction, oldNad: oldNad, newNad: newNad}
+	workItem := workItemType{action: updateAction, oldNad: oldNad, newNad: newNad}
 	c.workqueue.Add(workItem)
 }
 
@@ -390,7 +406,7 @@ func (c *TopologyController) processNextWorkItem() bool {
 	}
 	defer c.workqueue.Done(key)
 
-	err := c.processItem(key.(WorkItem))
+	err := c.processItem(key.(workItemType))
 	if err != nil {
 		klog.V(4).Infof("work item aborted: %s", err)
 	}
@@ -398,7 +414,7 @@ func (c *TopologyController) processNextWorkItem() bool {
 	return true
 }
 
-func (c *TopologyController) processItem(workItem WorkItem) error {
+func (c *TopologyController) processItem(workItem workItemType) error {
 	switch workItem.action {
 	case datatypes.CreateAttach, datatypes.DeleteDetach, datatypes.UpdateAttachDetach, datatypes.UpdateAttach, datatypes.UpdateDetach:
 		{
