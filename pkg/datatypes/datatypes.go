@@ -78,6 +78,14 @@ type NetConf struct {
 	VlanTrunk string `json:"vlan_trunk,omitempty"`
 }
 
+// AttachNode contain a map list of ports that need hostportlabel attachment
+type AttachNode struct {
+        AttachPorts map[string]bool
+}
+
+// AttachNodes is a map list of nodes for hostportlabel attachment
+type AttachNodes map[string]AttachNode
+
 // NadAction for code readability
 type NadAction int
 
