@@ -48,6 +48,7 @@ type AuthOpts struct {
 	Insecure    bool
 }
 
+
 // FssClient defines FSS REST API Client
 type FssClient struct {
 	cfg                AuthOpts
@@ -1093,45 +1094,109 @@ func (f *FssClient) GetHostPort(node string, port string) (string, bool) {
 	return hostPortID, true
 }
 
-// AttachHostPort attaches host port by host port label
-func (f *FssClient) AttachHostPort(hostPortLabelID string, node string, port datatypes.JSONNic) error {
-	// Check if port exists
-	portName := port["name"].(string)
-	hostPortID, ok := f.GetHostPort(node, portName)
-	if !ok {
-		klog.Errorf("HostPort not exist")
-		return fmt.Errorf("HostPort not exist")
-	}
-	// Check if port is already attached
-	for _, v := range f.database.attachedPorts[hostPortLabelID] {
-		if _, ok = v[hostPortID]; ok {
-			klog.Infof("hostPort %s already attached by association %s", hostPortID, v[hostPortID])
-			return nil
-		}
-	}
-	klog.Infof("Add hostPortLabel %s to host %s port %s", hostPortLabelID, node, portName)
-	hostPortAssociation := HostPortAssociation{
-		DeploymentID:    f.deployment.ID,
-		HostPortLabelID: hostPortLabelID,
-		HostPortID:      hostPortID,
-	}
-	jsonRequest, _ := json.Marshal(hostPortAssociation)
-	statusCode, jsonResponse, err := f.POST(hostPortAssociationPath, jsonRequest)
-	if err != nil {
-		return err
-	}
-	if statusCode != 201 {
-		var errorResponse ErrorResponse
-		json.Unmarshal(jsonResponse, &errorResponse)
-		klog.Errorf("HostPortAssociation error: %+v", errorResponse)
-		return fmt.Errorf("Create HostPortAssociation failed with status=%d", statusCode)
-	}
-	json.Unmarshal(jsonResponse, &hostPortAssociation)
-	klog.Infof("HostPortAssociation is created: %+v", hostPortAssociation)
-	portAssociation := make(HostPortAssociationIDByPort)
-	portAssociation[hostPortID] = hostPortAssociation.ID
-	f.database.attachedPorts[hostPortLabelID] = append(f.database.attachedPorts[hostPortLabelID], portAssociation)
-	return nil
+// AttachHostPorts attaches host ports of node hosts by host port label
+func (f *FssClient) AttachHostPorts(hostPortLabelID string, hostPorts map[string]HostPortIDByName) (map[string]error, error) {
+        attachNodesStatus := make(map[string]error)
+
+        hostPortAssociationBulk := HostPortAssociations{}
+        var postList []HostPortAssociations
+        for nodeName, nodePorts := range hostPorts {
+                attachNodesStatus[nodeName] = nil
+                for portName, _ := range nodePorts {
+			hostPortID, ok := f.GetHostPort(nodeName, portName)
+                        // Check if port is already attached
+                        for _, v := range f.database.attachedPorts[hostPortLabelID] {
+                                if _, ok = v[hostPortID]; ok {
+                                        klog.Infof("hostPort %s already attached by association %s", hostPortID, v[hostPortID])
+                                        continue
+                                }
+                        }
+                        klog.Infof("Add hostPortLabel %s to host %s port %s", hostPortLabelID, nodeName, portName)
+                        hostPortAssociation := HostPortAssociation{
+                                DeploymentID:    f.deployment.ID,
+                                HostPortLabelID: hostPortLabelID,
+                                HostPortID:      hostPortID,
+                        }
+                        if len(hostPortAssociationBulk) < 200 {
+                                hostPortAssociationBulk = append(hostPortAssociationBulk, hostPortAssociation)
+                                if len(hostPortAssociationBulk) == 200 {
+                                        postList = append(postList, hostPortAssociationBulk)
+                                        hostPortAssociationBulk = HostPortAssociations{}
+                                }
+                        }
+                }
+        }
+        if len(hostPortAssociationBulk) > 0 {
+                postList = append(postList, hostPortAssociationBulk)
+        }
+        if len(postList) == 0 {
+                return attachNodesStatus, nil
+        }
+        for _, hostPortAssociationBulk := range postList {
+                klog.Infof("Send Bulk API POST to create %d of hostPortAssociates", len(hostPortAssociationBulk))
+                jsonRequest, _ := json.Marshal(hostPortAssociationBulk)
+                statusCode, jsonResponses, err := f.POST(hostPortAssociationPath, jsonRequest)
+                if err != nil {
+                        return attachNodesStatus, err
+                }
+                if statusCode != 200 && statusCode != 201 && statusCode != 207 {
+                        var errorResponse ErrorResponse
+                        json.Unmarshal(jsonResponses, &errorResponse)
+                        klog.Errorf("HostPortAssociation error: %+v", errorResponse)
+                        return attachNodesStatus, fmt.Errorf("Create HostPortAssociation failed with status=%d", statusCode)
+                }
+                var responses BulkResponse
+                err = json.Unmarshal(jsonResponses, &responses)
+                if err != nil {
+                        return attachNodesStatus, err
+                }
+                for _, response := range responses.Responses {
+                        jsonData, err := json.Marshal(response.Data)
+                        if err != nil {
+                                klog.Errorf("HostPortAssociation response decode error: %+v", err)
+                                continue
+                        }
+                        if response.Status != 201 {
+                                var errorResponse ErrorResponse
+                                err = json.Unmarshal(jsonData, &errorResponse)
+                                klog.Errorf("HostPortAssociation status %d with error: %+v", response.Status, errorResponse)
+                                continue
+                        }
+                        var hostPortAssociation HostPortAssociation
+                        err = json.Unmarshal(jsonData, &hostPortAssociation)
+                        if err != nil {
+                                klog.Errorf("HostPortAssociation response decode error: %+v", err)
+                                continue
+                        }
+                        klog.Infof("HostPortAssociation is created: %+v", hostPortAssociation)
+                        portAssociation := make(HostPortAssociationIDByPort)
+                        portAssociation[hostPortAssociation.HostPortID] = hostPortAssociation.ID
+                        f.database.attachedPorts[hostPortAssociation.HostPortLabelID] = append(f.database.attachedPorts[hostPortAssociation.HostPortLabelID], portAssociation)
+                }
+        }
+
+        for nodeName, nodePorts := range hostPorts {
+                var node_error bool
+		for portName, _ := range nodePorts {
+			hostPortID, ok := f.GetHostPort(nodeName, portName)
+                        // Check if port is already attached
+                        for _, v := range f.database.attachedPorts[hostPortLabelID] {
+                                if _, ok = v[hostPortID]; !ok {
+                                        klog.Errorf("HostPortAssociation failed for hostPortLabelID %s hostPortID: %s", hostPortLabelID, hostPortID)
+                                        attachNodesStatus[nodeName] = fmt.Errorf("Create HostPortAssociation failed")
+                                        node_error = true
+                                        break
+                                }
+				if node_error {
+                                     break
+                                }
+                        }
+                        if node_error {
+				break
+			}
+                }
+        }
+        return attachNodesStatus, nil
 }
 
 // DetachHostPort detaches host port by host port label
@@ -1197,4 +1262,75 @@ func (f *FssClient) DetachNode(nodeName string) {
 	}
 	// Remove locally
 	delete(f.database.hostPorts, nodeName)
+}
+
+// Attach hostportlabel to all hostports
+func (f *FssClient) Attach(fssWorkloadEvpnName, fssSubnetName, hostPortLabelID string, nodesInfo map[string]datatypes.NodeTopology, requestType datatypes.NadAction) (map[string]error, error) {
+        nodesStatus := make(map[string]error)
+        for k := range nodesInfo {
+                nodesStatus[k] = nil
+        }
+        hostPorts := make(map[string]HostPortIDByName)
+        for nodeName, nodeTopology := range nodesInfo {
+                hostPorts[nodeName] = make(HostPortIDByName)
+                for bondName, bond := range nodeTopology.Bonds {
+                        if bond.Mode == "802.3ad" {
+                                nic := datatypes.Nic{
+                                        Name:       bondName,
+                                        MacAddress: bond.MacAddress}
+                                var tmp []byte
+                                tmp, _ = json.Marshal(nic)
+                                var jsonNic datatypes.JSONNic
+                                json.Unmarshal(tmp, &jsonNic)
+                                // create parent host port
+                                parentHostPortID, err := f.CreateHostPort(nodeName, jsonNic, true, "")
+                                if err != nil {
+                                        nodesStatus[nodeName] = err
+                                        continue
+                                }
+                                for _, port := range nodeTopology.Bonds[bondName].Ports {
+                                        // create slave host port
+                                        _, err = f.CreateHostPort(nodeName, port, false, parentHostPortID)
+                                        if err != nil {
+                                                nodesStatus[nodeName] = err
+                                                continue
+                                        }
+                                }
+                                hostPorts[nodeName][bondName] = parentHostPortID
+                        } else {
+                                for _, port := range nodeTopology.Bonds[bondName].Ports {
+                                        hostPortID, err := f.CreateHostPort(nodeName, port, false, "")
+                                        if err != nil {
+                                                nodesStatus[nodeName] = err
+                                                continue
+                                        }
+                                        hostPorts[nodeName][port["name"].(string)] = hostPortID
+                                }
+                        }
+                }
+                for _, v := range nodeTopology.SriovPools {
+                        for _, port := range v {
+                                hostPortID, err := f.CreateHostPort(nodeName, port, false, "")
+                                if err != nil {
+                                        nodesStatus[nodeName] = err
+                                        continue
+                                }
+                                hostPorts[nodeName][port["name"].(string)] = hostPortID
+                        }
+                }
+        }
+        if len(hostPorts) == 0 {
+                klog.Infof("No host ports need attached")
+                return nodesStatus, nil
+        }
+        klog.Infof("Attach step 2a: attach hostPortLabel %s to hosts", hostPortLabelID)
+        var attachNodesStatus map[string]error
+        attachNodesStatus, err := f.AttachHostPorts(hostPortLabelID, hostPorts)
+        for nodeName, _ := range hostPorts {
+                if attachNodesStatus[nodeName] != nil {
+                        klog.Infof("node %s attach ports status return error %+v", nodeName, attachNodesStatus[nodeName])
+                        nodesStatus[nodeName] = attachNodesStatus[nodeName]
+                }
+        }
+        return nodesStatus, err
 }
