@@ -48,6 +48,7 @@ type AuthOpts struct {
 	Insecure    bool
 }
 
+
 // FssClient defines FSS REST API Client
 type FssClient struct {
 	cfg                AuthOpts
@@ -806,10 +807,10 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 	return nil
 }
 
-// CreateSubnetInterface creates VLAN interface (host port label)
-func (f *FssClient) CreateSubnetInterface(fssWorkloadEvpnName string, fssSubnetName string, vlanID int) (string, string, error) {
+// CreateSubnetInterfaces creates a range of VLAN interfaces (host port labels)
+func (f *FssClient) CreateSubnetInterfaces(fssWorkloadEvpnName string, fssSubnetName string, vlanRange string) (string, map[string]HostPortLabelIDByVlan, error) {
 	fssSubnetID := ""
-	hostPortLabelID := ""
+        hostPortLabels := make(map[string]HostPortLabelIDByVlan)
 
 	fssWorkloadEvpnID, ok1 := f.database.workloadMapping[fssWorkloadEvpnName]
 	if !ok1 {
@@ -824,13 +825,13 @@ func (f *FssClient) CreateSubnetInterface(fssWorkloadEvpnName string, fssSubnetN
 		jsonRequest, _ := json.Marshal(tenant)
 		statusCode, jsonResponse, err := f.POST(tenantPath, jsonRequest)
 		if err != nil {
-			return fssSubnetID, hostPortLabelID, err
+			return fssSubnetID, hostPortLabels, err
 		}
 		if statusCode != 201 {
 			var errorResponse ErrorResponse
 			json.Unmarshal(jsonResponse, &errorResponse)
 			klog.Errorf("Tenant error: %+v", errorResponse)
-			return fssSubnetID, hostPortLabelID, fmt.Errorf("Create tenant failed with status=%d", statusCode)
+			return fssSubnetID, hostPortLabels, fmt.Errorf("Create tenant failed with status=%d", statusCode)
 		}
 		json.Unmarshal(jsonResponse, &tenant)
 		klog.Infof("Tenant is created: %+v", tenant)
@@ -854,13 +855,13 @@ func (f *FssClient) CreateSubnetInterface(fssWorkloadEvpnName string, fssSubnetN
 		jsonRequest, _ := json.Marshal(subnet)
 		statusCode, jsonResponse, err := f.POST(subnetPath, jsonRequest)
 		if err != nil {
-			return fssSubnetID, hostPortLabelID, err
+			return fssSubnetID, hostPortLabels, err
 		}
 		if statusCode != 201 {
 			var errorResponse ErrorResponse
 			json.Unmarshal(jsonResponse, &errorResponse)
 			klog.Errorf("Subnet error: %+v", errorResponse)
-			return fssSubnetID, hostPortLabelID, fmt.Errorf("Create subnet failed with status=%d", statusCode)
+			return fssSubnetID, hostPortLabels, fmt.Errorf("Create subnet failed with status=%d", statusCode)
 		}
 		json.Unmarshal(jsonResponse, &subnet)
 		klog.Infof("Subnet is created: %+v", subnet)
@@ -870,39 +871,103 @@ func (f *FssClient) CreateSubnetInterface(fssWorkloadEvpnName string, fssSubnetN
 		f.database.hostPortLabels[fssSubnetID] = make(HostPortLabelIDByVlan)
 		f.database.attachedLabels[fssSubnetID] = make(HostPortLabelIDByVlan)
 	}
-	hostPortLabels := f.database.hostPortLabels[fssSubnetID]
-	vlanType := "value"
-	vlanValue := strconv.Itoa(vlanID)
-	if vlanID == 0 {
-		vlanType = "untagged"
-		vlanValue = ""
-	}
-	vlan := Vlan{vlanType, vlanValue}
-	hostPortLabelID, ok3 := hostPortLabels[vlan]
-	if ok1 && ok2 && ok3 {
-		return fssSubnetID, hostPortLabelID, nil
-	}
-	// Create the hostPortLabel
-	klog.Infof("Create hostPortLabel for fssSubnetID %s and vlanID %d", fssSubnetID, vlanID)
-	hostPortLabel := HostPortLabel{
-		DeploymentID: f.deployment.ID,
-		Name:         "label-" + fssSubnetID + "-" + strconv.Itoa(vlanID),
-	}
-	jsonRequest, _ := json.Marshal(hostPortLabel)
-	statusCode, jsonResponse, err := f.POST(hostPortLabelPath, jsonRequest)
-	if err != nil {
-		return fssSubnetID, hostPortLabelID, err
-	}
-	if statusCode != 201 {
-		var errorResponse ErrorResponse
-		json.Unmarshal(jsonResponse, &errorResponse)
-		klog.Errorf("HostPortLabel error: %+v", errorResponse)
-		return fssSubnetID, hostPortLabelID, fmt.Errorf("Create hostPortLabel failed with status=%d", statusCode)
-	}
-	json.Unmarshal(jsonResponse, &hostPortLabel)
-	klog.Infof("HostPortLabel is created: %+v", hostPortLabel)
-	f.database.hostPortLabels[fssSubnetID][vlan] = hostPortLabel.ID
-	return fssSubnetID, hostPortLabel.ID, nil
+
+        hostPortLabels[fssSubnetID] = make(HostPortLabelIDByVlan)
+	existHostPortLabels := f.database.hostPortLabels[fssSubnetID]
+        hostPortLabelBulk := HostPortLabels{}
+        var postList []HostPortLabels
+        vlanIDs, _ := datatypes.GetVlanIds(vlanRange)
+        for _, vlanID := range vlanIDs {
+		vlanType := "value"
+		vlanValue := strconv.Itoa(vlanID)
+		if vlanID == 0 {
+			vlanType = "untagged"
+			vlanValue = ""
+		}
+		vlan := Vlan{vlanType, vlanValue}
+		_, ok3 := existHostPortLabels[vlan]
+		if ok1 && ok2 && ok3 {
+                        hostPortLabels[fssSubnetID][vlan] = existHostPortLabels[vlan]
+			continue
+		}
+		// Create the hostPortLabel
+		klog.Infof("Create hostPortLabel for fssSubnetID %s and vlanID %d", fssSubnetID, vlanID)
+		hostPortLabel := HostPortLabel{
+			DeploymentID: f.deployment.ID,
+			Name:         "label-" + fssSubnetID + "-" + strconv.Itoa(vlanID),
+		}
+                if len(hostPortLabelBulk) < 200 {
+                        hostPortLabelBulk = append(hostPortLabelBulk, hostPortLabel)
+                        if len(hostPortLabelBulk) == 200 {
+                                postList = append(postList, hostPortLabelBulk)
+                                hostPortLabelBulk = HostPortLabels{}
+                        }
+                }
+        }
+        if len(hostPortLabelBulk) > 0 {
+                postList = append(postList, hostPortLabelBulk)
+        }
+        if len(postList) == 0  {
+                return fssSubnetID, hostPortLabels, nil
+        }
+        for _, hostPortLabelBulk := range postList {
+                klog.Infof("Send Bulk API POST to create %d of hostPortLabels for fssSubnetID", len(hostPortLabelBulk))
+                jsonRequest, _ := json.Marshal(hostPortLabelBulk)
+                statusCode, jsonResponses, err := f.POST(hostPortLabelPath, jsonRequest)
+                if err != nil {
+                        return fssSubnetID, hostPortLabels, err
+                }
+                if statusCode != 200 && statusCode != 201 && statusCode != 207 {
+                        var errorResponse ErrorResponse
+                        json.Unmarshal(jsonResponses, &errorResponse)
+                        klog.Errorf("HostPortLabel error: %+v", errorResponse)
+                        return fssSubnetID, hostPortLabels, fmt.Errorf("Create hostPortLabel failed with status=%d", statusCode)
+                }
+                var responses BulkResponse
+                err = json.Unmarshal(jsonResponses, &responses)
+                if err != nil {
+                        return fssSubnetID, hostPortLabels, err
+                }
+                for _, response := range responses.Responses {
+                        jsonData, err := json.Marshal(response.Data)
+                        if err != nil {
+                                klog.Errorf("HostPortLabel response decode error: %+v", err)
+                                return fssSubnetID, hostPortLabels, err
+                        }
+                        if response.Status != 201 {
+                                var errorResponse ErrorResponse
+                                err = json.Unmarshal(jsonData, &errorResponse)
+                                klog.Errorf("HostPortLabel status %d with error: %+v", response.Status, errorResponse)
+                                return fssSubnetID, hostPortLabels, err
+                        }
+                        var hostPortLabel HostPortLabel
+                        err = json.Unmarshal(jsonData, &hostPortLabel)
+                        if err != nil {
+                                klog.Errorf("HostPortLabel response decode error: %+v", err)
+                                return fssSubnetID, hostPortLabels, err
+                        }
+                        klog.Infof("HostPortLabel is created: %+v", hostPortLabel)
+                        vlanValue :=strings.Split(hostPortLabel.Name, "-")[2]
+                        vlanType := "value"
+                        vlanID, err := strconv.Atoi(vlanValue)
+                        if err!= nil  {
+                                klog.Errorf("HostPortLabel received has invalid vlan value %s", vlanValue)
+                                return fssSubnetID, hostPortLabels, err
+                        }
+                        if vlanID == 0 {
+                                vlanType = "untagged"
+                                vlanValue = ""
+                        }
+                        vlan := Vlan{vlanType, vlanValue}
+                        f.database.hostPortLabels[fssSubnetID][vlan] = hostPortLabel.ID
+                        hostPortLabels[fssSubnetID][vlan] = hostPortLabel.ID
+                }
+        }
+        if len(vlanIDs) > len(hostPortLabels[fssSubnetID]) {
+                klog.Errorf("hostPortLabels nb of requested %d does not match nb of received %d", len(vlanIDs), len(hostPortLabels[fssSubnetID]))
+                return fssSubnetID, hostPortLabels, fmt.Errorf("Create hostPortLabel missing some hostPortLabels")
+        }
+        return fssSubnetID, hostPortLabels, nil
 }
 
 // GetSubnetInterface returns VLAN interface (host port label) if exists
@@ -930,44 +995,95 @@ func (f *FssClient) GetSubnetInterface(fssWorkloadEvpnName string, fssSubnetName
 	return fssWorkloadEvpnID, fssSubnetID, hostPortLabelID, true
 }
 
-// AttachSubnetInterface attaches VLAN interface (host port label) to subnet
-func (f *FssClient) AttachSubnetInterface(fssSubnetID string, vlanID int, hostPortLabelID string) error {
-	klog.Infof("Attach hostPortLabel %s to fssSubnetID %s for vlanID %d", hostPortLabelID, fssSubnetID, vlanID)
+// AttachSubnetInterfaces attaches a range of VLAN interfaces (host port labels) to subnet
+func (f *FssClient) AttachSubnetInterfaces(fssSubnetID string, vlanRange string) error {
+        subnetAssociationBulk := SubnetAssociations{}
+        var postList []SubnetAssociations
 	attachedLabels := f.database.attachedLabels[fssSubnetID]
-	vlanType := "value"
-	vlanValue := strconv.Itoa(vlanID)
-	if vlanID == 0 {
-		vlanType = "untagged"
-		vlanValue = ""
-	}
-	vlan := Vlan{vlanType, vlanValue}
-	_, ok := attachedLabels[vlan]
-	if ok && hostPortLabelID == attachedLabels[vlan] {
-		klog.Infof("hostPortLabel %s already attached", hostPortLabelID)
-		return nil
-	}
-	subnetAssociation := SubnetAssociation{
-		DeploymentID:    f.deployment.ID,
-		HostPortLabelID: hostPortLabelID,
-		SubnetID:        f.database.subnets[fssSubnetID].ID,
-		VlanType:        vlanType,
-		VlanValue:       vlanValue,
-	}
-	jsonRequest, _ := json.Marshal(subnetAssociation)
-	statusCode, jsonResponse, err := f.POST(subnetAssociationPath, jsonRequest)
-	if err != nil {
-		return err
-	}
-	if statusCode != 201 {
-		var errorResponse ErrorResponse
-		json.Unmarshal(jsonResponse, &errorResponse)
-		klog.Errorf("SubnetAssociation error: %+v", errorResponse)
-		return fmt.Errorf("Create SubnetAssociation failed with status=%d", statusCode)
-	}
-	json.Unmarshal(jsonResponse, &subnetAssociation)
-	klog.Infof("SubnetAssociation is created: %+v", subnetAssociation)
-	f.database.attachedLabels[fssSubnetID][vlan] = subnetAssociation.HostPortLabelID
-	return nil
+        hostPortLabels := f.database.hostPortLabels[fssSubnetID]
+        vlanIDs, _ := datatypes.GetVlanIds(vlanRange)
+        for _, vlanID := range vlanIDs {
+                vlanType := "value"
+                vlanValue := strconv.Itoa(vlanID)
+                if vlanID == 0 {
+                        vlanType = "untagged"
+                        vlanValue = ""
+                }
+                vlan := Vlan{vlanType, vlanValue}
+                hostPortLabelID, ok := hostPortLabels[vlan]
+                if !ok {
+                        klog.Errorf("HostPortLabel not exist for vlan %d", vlanID)
+                        return fmt.Errorf("HostPortLabel not exist")
+                }
+                klog.Infof("Attach hostPortLabel %s to fssSubnetID %s for vlanID %d", hostPortLabelID, fssSubnetID, vlanID)
+                attachPortLabelID, ok := attachedLabels[vlan]
+                if ok && hostPortLabelID == attachPortLabelID {
+                        klog.Infof("hostPortLabel %s already attached", hostPortLabelID)
+                        return nil
+                }
+                subnetAssociation := SubnetAssociation{
+                        DeploymentID:    f.deployment.ID,
+                        HostPortLabelID: hostPortLabelID,
+                        SubnetID:        f.database.subnets[fssSubnetID].ID,
+                        VlanType:        vlanType,
+                        VlanValue:       vlanValue,
+                }
+                if len(subnetAssociationBulk) < 200 {
+                        subnetAssociationBulk = append(subnetAssociationBulk, subnetAssociation)
+                        if len(subnetAssociationBulk) == 200 {
+                                postList = append(postList, subnetAssociationBulk)
+                                subnetAssociationBulk = SubnetAssociations{}
+                        }
+                }
+        }
+        if len(subnetAssociationBulk) > 0 {
+                postList = append(postList, subnetAssociationBulk)
+        }
+        if len(postList) == 0 {
+                return nil
+        }
+        for _, subnetAssociationBulk := range postList {
+                klog.Infof("Send Bulk API POST to create %d subnetAssociations", len(subnetAssociationBulk))
+                jsonRequest, _ := json.Marshal(subnetAssociationBulk)
+                statusCode, jsonResponses, err := f.POST(subnetAssociationPath, jsonRequest)
+                if err != nil {
+                        return err
+                }
+                if statusCode != 200 && statusCode != 201 && statusCode != 207 {
+                        var errorResponse ErrorResponse
+                        json.Unmarshal(jsonResponses, &errorResponse)
+                        klog.Errorf("SubnetAssociation error: %+v", errorResponse)
+                        return fmt.Errorf("Create SubnetAssociation failed with status=%d", statusCode)
+                }
+                var responses BulkResponse
+                err = json.Unmarshal(jsonResponses, &responses)
+                if err != nil {
+                        return err
+                }
+                for _, response := range responses.Responses {
+                        jsonData, err := json.Marshal(response.Data)
+                        if err != nil {
+                                klog.Errorf("SubnetAssociation response decode error: %+v", err)
+                                continue
+                        }
+                        if response.Status != 201 {
+                                var errorResponse ErrorResponse
+                                err = json.Unmarshal(jsonData, &errorResponse)
+                                klog.Errorf("SubnetAssociation status %d with error: %+v", response.Status, errorResponse)
+                                continue
+                        }
+                        var subnetAssociation SubnetAssociation
+                        err = json.Unmarshal(jsonData, &subnetAssociation)
+                        if err != nil {
+                                klog.Errorf("SubnetAssociation response decode error: %+v", err)
+                                continue
+                        }
+                        klog.Infof("SubnetAssociation is created: %+v", subnetAssociation)
+                        vlan := Vlan{subnetAssociation.VlanType, subnetAssociation.VlanValue}
+                        f.database.attachedLabels[fssSubnetID][vlan] = subnetAssociation.HostPortLabelID
+                }
+        }
+        return nil
 }
 
 // DeleteSubnetInterface deletes VLAN interface (host port label)
@@ -1093,45 +1209,114 @@ func (f *FssClient) GetHostPort(node string, port string) (string, bool) {
 	return hostPortID, true
 }
 
-// AttachHostPort attaches host port by host port label
-func (f *FssClient) AttachHostPort(hostPortLabelID string, node string, port datatypes.JSONNic) error {
-	// Check if port exists
-	portName := port["name"].(string)
-	hostPortID, ok := f.GetHostPort(node, portName)
-	if !ok {
-		klog.Errorf("HostPort not exist")
-		return fmt.Errorf("HostPort not exist")
-	}
-	// Check if port is already attached
-	for _, v := range f.database.attachedPorts[hostPortLabelID] {
-		if _, ok = v[hostPortID]; ok {
-			klog.Infof("hostPort %s already attached by association %s", hostPortID, v[hostPortID])
-			return nil
-		}
-	}
-	klog.Infof("Add hostPortLabel %s to host %s port %s", hostPortLabelID, node, portName)
-	hostPortAssociation := HostPortAssociation{
-		DeploymentID:    f.deployment.ID,
-		HostPortLabelID: hostPortLabelID,
-		HostPortID:      hostPortID,
-	}
-	jsonRequest, _ := json.Marshal(hostPortAssociation)
-	statusCode, jsonResponse, err := f.POST(hostPortAssociationPath, jsonRequest)
-	if err != nil {
-		return err
-	}
-	if statusCode != 201 {
-		var errorResponse ErrorResponse
-		json.Unmarshal(jsonResponse, &errorResponse)
-		klog.Errorf("HostPortAssociation error: %+v", errorResponse)
-		return fmt.Errorf("Create HostPortAssociation failed with status=%d", statusCode)
-	}
-	json.Unmarshal(jsonResponse, &hostPortAssociation)
-	klog.Infof("HostPortAssociation is created: %+v", hostPortAssociation)
-	portAssociation := make(HostPortAssociationIDByPort)
-	portAssociation[hostPortID] = hostPortAssociation.ID
-	f.database.attachedPorts[hostPortLabelID] = append(f.database.attachedPorts[hostPortLabelID], portAssociation)
-	return nil
+// AttachHostPorts attaches host ports of node hosts by host port label
+func (f *FssClient) AttachHostPorts(fssSubnetId string, hostPortLabels map[string]HostPortLabelIDByVlan, hostPorts map[string]HostPortIDByName) (map[string]error, error) {
+        attachNodesStatus := make(map[string]error)
+
+        hostPortAssociationBulk := HostPortAssociations{}
+        var postList []HostPortAssociations
+        hostPortLabelIDByVlan, _ := hostPortLabels[fssSubnetId]
+        for nodeName, nodePorts := range hostPorts {
+                attachNodesStatus[nodeName] = nil
+                for portName, _ := range nodePorts {
+			hostPortID, ok := f.GetHostPort(nodeName, portName)
+                        for _, hostPortLabelID := range hostPortLabelIDByVlan {
+                                // Check if port is already attached
+                                for _, v := range f.database.attachedPorts[hostPortLabelID] {
+                                        if _, ok = v[hostPortID]; ok {
+                                                klog.Infof("hostPort %s already attached by association %s", hostPortID, v[hostPortID])
+                                                continue
+                                        }
+                                }
+                                klog.Infof("Add hostPortLabel %s to host %s port %s", hostPortLabelID, nodeName, portName)
+                                hostPortAssociation := HostPortAssociation{
+                                        DeploymentID:    f.deployment.ID,
+                                        HostPortLabelID: hostPortLabelID,
+                                        HostPortID:      hostPortID,
+                                }
+                                if len(hostPortAssociationBulk) < 200 {
+                                        hostPortAssociationBulk = append(hostPortAssociationBulk, hostPortAssociation)
+                                        if len(hostPortAssociationBulk) == 200 {
+                                                postList = append(postList, hostPortAssociationBulk)
+                                                hostPortAssociationBulk = HostPortAssociations{}
+                                        }
+                                }
+                        }
+                }
+        }
+        if len(hostPortAssociationBulk) > 0 {
+                postList = append(postList, hostPortAssociationBulk)
+        }
+        if len(postList) == 0 {
+                return attachNodesStatus, nil
+        }
+        for _, hostPortAssociationBulk := range postList {
+                klog.Infof("Send Bulk API POST to create %d of hostPortAssociates", len(hostPortAssociationBulk))
+                jsonRequest, _ := json.Marshal(hostPortAssociationBulk)
+                statusCode, jsonResponses, err := f.POST(hostPortAssociationPath, jsonRequest)
+                if err != nil {
+                        return attachNodesStatus, err
+                }
+                if statusCode != 200 && statusCode != 201 && statusCode != 207 {
+                        var errorResponse ErrorResponse
+                        json.Unmarshal(jsonResponses, &errorResponse)
+                        klog.Errorf("HostPortAssociation error: %+v", errorResponse)
+                        return attachNodesStatus, fmt.Errorf("Create HostPortAssociation failed with status=%d", statusCode)
+                }
+                var responses BulkResponse
+                err = json.Unmarshal(jsonResponses, &responses)
+                if err != nil {
+                        return attachNodesStatus, err
+                }
+                for _, response := range responses.Responses {
+                        jsonData, err := json.Marshal(response.Data)
+                        if err != nil {
+                                klog.Errorf("HostPortAssociation response decode error: %+v", err)
+                                continue
+                        }
+                        if response.Status != 201 {
+                                var errorResponse ErrorResponse
+                                err = json.Unmarshal(jsonData, &errorResponse)
+                                klog.Errorf("HostPortAssociation status %d with error: %+v", response.Status, errorResponse)
+                                continue
+                        }
+                        var hostPortAssociation HostPortAssociation
+                        err = json.Unmarshal(jsonData, &hostPortAssociation)
+                        if err != nil {
+                                klog.Errorf("HostPortAssociation response decode error: %+v", err)
+                                continue
+                        }
+                        klog.Infof("HostPortAssociation is created: %+v", hostPortAssociation)
+                        portAssociation := make(HostPortAssociationIDByPort)
+                        portAssociation[hostPortAssociation.HostPortID] = hostPortAssociation.ID
+                        f.database.attachedPorts[hostPortAssociation.HostPortLabelID] = append(f.database.attachedPorts[hostPortAssociation.HostPortLabelID], portAssociation)
+                }
+        }
+
+        for nodeName, nodePorts := range hostPorts {
+                var node_error bool
+		for portName, _ := range nodePorts {
+			hostPortID, ok := f.GetHostPort(nodeName, portName)
+			for _, hostPortLabelID := range hostPortLabelIDByVlan {
+                                // Check if port is already attached
+                                for _, v := range f.database.attachedPorts[hostPortLabelID] {
+                                        if _, ok = v[hostPortID]; !ok {
+                                                klog.Errorf("HostPortAssociation failed for hostPortLabelID %s hostPortID: %s", hostPortLabelID, hostPortID)
+                                                attachNodesStatus[nodeName] = fmt.Errorf("Create HostPortAssociation failed")
+                                                node_error = true
+                                                break
+                                        }
+                                }
+				if node_error {
+                                     break
+                                }
+                        }
+                        if node_error {
+				break
+			}
+                }
+        }
+        return attachNodesStatus, nil
 }
 
 // DetachHostPort detaches host port by host port label
@@ -1197,4 +1382,90 @@ func (f *FssClient) DetachNode(nodeName string) {
 	}
 	// Remove locally
 	delete(f.database.hostPorts, nodeName)
+}
+
+// Attach create hostportlabel, then attach hostportlabel to hostports
+func (f *FssClient) Attach(fssWorkloadEvpnName, fssSubnetName, vlanRange string, nodesInfo map[string]datatypes.NodeTopology, requestType datatypes.NadAction) (map[string]error, error) {
+        nodesStatus := make(map[string]error)
+        for k := range nodesInfo {
+                nodesStatus[k] = nil
+        }
+        klog.Infof("Attach step 1: create/get hostPortLabel for vlanRange %s on fssWorkloadEvpnName %s fssSubnetName %s", vlanRange, fssWorkloadEvpnName, fssSubnetName)
+        fssSubnetID, hostPortLabels, err := f.CreateSubnetInterfaces(fssWorkloadEvpnName, fssSubnetName, vlanRange)
+        if err != nil {
+                return nodesStatus, err
+        }
+        hostPorts := make(map[string]HostPortIDByName)
+        for nodeName, nodeTopology := range nodesInfo {
+                hostPorts[nodeName] = make(HostPortIDByName)
+                for bondName, bond := range nodeTopology.Bonds {
+                        if bond.Mode == "802.3ad" {
+                                nic := datatypes.Nic{
+                                        Name:       bondName,
+                                        MacAddress: bond.MacAddress}
+                                var tmp []byte
+                                tmp, _ = json.Marshal(nic)
+                                var jsonNic datatypes.JSONNic
+                                json.Unmarshal(tmp, &jsonNic)
+                                // create parent host port
+                                parentHostPortID, err := f.CreateHostPort(nodeName, jsonNic, true, "")
+                                if err != nil {
+                                        nodesStatus[nodeName] = err
+                                        continue
+                                }
+                                for _, port := range nodeTopology.Bonds[bondName].Ports {
+                                        // create slave host port
+                                        _, err = f.CreateHostPort(nodeName, port, false, parentHostPortID)
+                                        if err != nil {
+                                                nodesStatus[nodeName] = err
+                                                continue
+                                        }
+                                }
+                                hostPorts[nodeName][bondName] = parentHostPortID
+                        } else {
+                                for _, port := range nodeTopology.Bonds[bondName].Ports {
+                                        hostPortID, err := f.CreateHostPort(nodeName, port, false, "")
+                                        if err != nil {
+                                                nodesStatus[nodeName] = err
+                                                continue
+                                        }
+                                        hostPorts[nodeName][port["name"].(string)] = hostPortID
+                                }
+                        }
+                }
+                for _, v := range nodeTopology.SriovPools {
+                        for _, port := range v {
+                                hostPortID, err := f.CreateHostPort(nodeName, port, false, "")
+                                if err != nil {
+                                        nodesStatus[nodeName] = err
+                                        continue
+                                }
+                                hostPorts[nodeName][port["name"].(string)] = hostPortID
+                        }
+                }
+        }
+        if len(hostPorts) == 0 {
+                klog.Infof("No host ports need attached")
+                return nodesStatus, nil
+        }
+        klog.Infof("Attach step 2a: attach hostPortLabel for vlanRange %s to hosts", vlanRange)
+        var attachNodesStatus map[string]error
+        attachNodesStatus, err = f.AttachHostPorts(fssSubnetID, hostPortLabels, hostPorts)
+        for nodeName, _ := range hostPorts { 
+                if attachNodesStatus[nodeName] != nil {
+                        klog.Infof("node %s attach ports status return error %+v", nodeName, attachNodesStatus[nodeName])
+                        nodesStatus[nodeName] = attachNodesStatus[nodeName]
+                }
+        }
+        if err != nil {
+                return nodesStatus, err
+        }
+        if requestType == datatypes.CreateAttach || requestType == datatypes.UpdateAttach {
+                klog.Infof("Attach step 2: attach hostPortLabel vlanRange %s on fssSubnetID %s", vlanRange, fssSubnetID)
+                err = f.AttachSubnetInterfaces(fssSubnetID, vlanRange)
+                if err != nil {
+                        return nodesStatus, err
+                }
+        }
+        return nodesStatus, nil
 }
