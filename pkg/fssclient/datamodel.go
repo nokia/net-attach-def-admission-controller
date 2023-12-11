@@ -202,7 +202,7 @@ type ErrorResponse struct {
 	Type           string   `json:"type"`
 }
 
-// BulkResponse in FSS Connect Bulk API
+// BulkItem in FSS Connect Bulk API BulkResponse
 type BulkItem struct {
         Status         int         `json:"status"`
         Data           interface{} `json:"data"`
@@ -215,7 +215,7 @@ type BulkResposeMetadata struct {
         Total          int         `json:"total"`
 }
 
-// BulkResponses in FSS Connect Bulk API
+// BulkResponse in FSS Connect Bulk API
 type BulkResponse struct {
         ResponseMetadata BulkResposeMetadata `json:"responseMetadata"`
         Responses        []BulkItem          `json:"response"`

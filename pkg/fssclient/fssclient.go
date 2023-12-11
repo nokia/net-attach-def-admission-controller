@@ -1079,6 +1079,7 @@ func (f *FssClient) CreateHostPort(node string, port datatypes.JSONNic, isLag bo
 	return hostPortID, nil
 }
 
+// CreateHostPortBulk send bulk API to create a list of hostports
 func (f *FssClient) CreateHostPortBulk(postList []HostPorts) (error) {
         for _, hostPortBulk := range postList {
                 klog.Infof("Send Bulk API POST to create %d of hostPorts", len(hostPortBulk))
