@@ -87,9 +87,9 @@ func (p *FssVlanProvider) Attach(fssWorkloadEvpnName, fssSubnetName, vlanRange s
 		}
                 klog.Infof("Attach step 2a: attach hostPortLabel vlan %d to all hosts", vlanID)
                 var errCode error
-                nodesStatus, errCode  = p.fssClient.Attach(fssWorkloadEvpnName, fssSubnetName, hostPortLabelID, nodesInfo, requestType)
+                nodesStatus, errCode  = p.fssClient.Attach(hostPortLabelID, nodesInfo)
                 if errCode != nil {
-                        for k, _ := range nodesInfo {
+                        for k := range nodesInfo {
                                 if nodesStatus[k] != nil {
                                         klog.Infof("node %s attach ports status return error %+v", k, nodesStatus[k])
                                         nodesStatus[k] = errCode
