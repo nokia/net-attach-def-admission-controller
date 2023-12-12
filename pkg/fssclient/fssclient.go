@@ -1149,7 +1149,7 @@ func (f *FssClient) AttachHostPorts(hostPortLabelID string, hostPorts map[string
         var postList []HostPortAssociations
         for nodeName, nodePorts := range hostPorts {
                 attachNodesStatus[nodeName] = nil
-                for portName, _ := range nodePorts {
+                for portName := range nodePorts {
 			hostPortID, ok := f.GetHostPort(nodeName, portName)
                         if !ok {
                                 klog.Errorf("HostPort not exist")
@@ -1228,7 +1228,7 @@ func (f *FssClient) AttachHostPorts(hostPortLabelID string, hostPorts map[string
         }
 
         for nodeName, nodePorts := range hostPorts {
-		for portName, _ := range nodePorts {
+		for portName := range nodePorts {
                         var found bool
 			hostPortID, ok := f.GetHostPort(nodeName, portName)
                         // Check if port is already attached
@@ -1314,7 +1314,7 @@ func (f *FssClient) DetachNode(nodeName string) {
 }
 
 // Attach hostportlabel to all hostports
-func (f *FssClient) Attach(fssWorkloadEvpnName, fssSubnetName, hostPortLabelID string, nodesInfo map[string]datatypes.NodeTopology, requestType datatypes.NadAction) (map[string]error, error) {
+func (f *FssClient) Attach(hostPortLabelID string, nodesInfo map[string]datatypes.NodeTopology, requestType datatypes.NadAction) (map[string]error, error) {
         nodesStatus := make(map[string]error)
         for k := range nodesInfo {
                 nodesStatus[k] = nil
@@ -1411,8 +1411,8 @@ func (f *FssClient) Attach(fssWorkloadEvpnName, fssSubnetName, hostPortLabelID s
 							createHostPortBulk = HostPorts{}
 						}
                                         }
-					attachHostPorts[nodeName][port["name"].(string)] = hostPortID
 				}
+				attachHostPorts[nodeName][port["name"].(string)] = hostPortID
                         }
                 }
         }
@@ -1431,7 +1431,7 @@ func (f *FssClient) Attach(fssWorkloadEvpnName, fssSubnetName, hostPortLabelID s
                 klog.Infof("No host ports need attached")
                 return nodesStatus, nil
         }
-        klog.Infof("Attach step 2a: attach hostPortLabel %s to hosts", hostPortLabelID)
+        klog.Infof("Attach step 2a: attach hostPortLabel %s to hosts %+v", hostPortLabelID, attachHostPorts)
         nodesStatus, err := f.AttachHostPorts(hostPortLabelID, attachHostPorts)
         return nodesStatus, err
 }
