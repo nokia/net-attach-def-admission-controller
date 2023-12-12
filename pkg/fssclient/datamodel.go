@@ -202,6 +202,25 @@ type ErrorResponse struct {
 	Type           string   `json:"type"`
 }
 
+// BulkItem in FSS Connect Bulk API BulkResponse
+type BulkItem struct {
+        Status         int         `json:"status"`
+        Data           interface{} `json:"data"`
+}
+
+// BulkResposeMetadata in FSS Connect Bulk API top layer
+type BulkResposeMetadata struct {
+        Success        int         `json:"success"`
+        Failure        int         `json:"failure"`
+        Total          int         `json:"total"`
+}
+
+// BulkResponse in FSS Connect Bulk API
+type BulkResponse struct {
+        ResponseMetadata BulkResposeMetadata `json:"responseMetadata"`
+        Responses        []BulkItem          `json:"response"`
+}
+
 // Vlan is FSS Connect API Data Type
 type Vlan struct {
 	vlanType  string
