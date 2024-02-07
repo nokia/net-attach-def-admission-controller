@@ -710,7 +710,7 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
                         }
                         // Delete unknown object
                         if !knownObject {
-                                klog.Warningf("Delete unknown hostport ID %s from database: %s:%s", localHostPortId, node, port)
+                                klog.Warningf("Delete unknown hostport ID %s from database: %s:%s", localHostPortID, node, port)
                                 delete(f.database.hostPorts[node], port)
                         }
                 }
