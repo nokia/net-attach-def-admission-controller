@@ -156,6 +156,11 @@ func (f *FssClient) DELETE(path string) (int, []byte, error) {
 
 // POST implements POST method
 func (f *FssClient) POST(path string, jsonReqData []byte) (int, []byte, error) {
+	return f.POST_with_retries(path, jsonReqData, 0)
+}
+
+// POST implements POST with retries method
+func (f *FssClient) POST_with_retries(path string, jsonReqData []byte, nbOfRetries int) (int, []byte, error) {
 	err := f.GetAccessToken()
 	if err != nil {
 		return 0, nil, err
@@ -186,6 +191,11 @@ func (f *FssClient) POST(path string, jsonReqData []byte) (int, []byte, error) {
 	jsonRespData, err := ioutil.ReadAll(response.Body)
 	if err != nil {
 		return response.StatusCode, nil, err
+	}
+	if response.StatusCode == 401 {
+		if nbOfRetries < 2 {
+			return f.POST_with_retries(path, jsonReqData, nbOfRetries + 1)
+		}
 	}
 	return response.StatusCode, jsonRespData, err
 }
@@ -677,6 +687,35 @@ func (f *FssClient) Resync(firstRun bool, deploymentID string) error {
 		}
 	}
 
+        statusCode, jsonResponse, err = f.GET(hostPortPath)
+        if err != nil {
+                return err
+        }
+        if statusCode != 200 {
+                return fmt.Errorf("Get hostPorts failed with status=%d", statusCode)
+        }
+        var serverHostPorts HostPorts
+        json.Unmarshal(jsonResponse, &serverHostPorts)
+        for node, localHostPorts := range f.database.hostPorts {
+                for port, localHostPortID := range localHostPorts {
+                        // Check if object is known
+                        knownObject := false
+                        for _, serverHostPort := range serverHostPorts {
+                                if serverHostPort.DeploymentID == deploymentID {
+                                        if serverHostPort.ID == localHostPortID {
+                                                knownObject = true
+                                                break
+                                        }
+                                }
+                        }
+                        // Delete unknown object
+                        if !knownObject {
+                                klog.Warningf("Delete unknown hostport ID %s from database: %s:%s", localHostPortId, node, port)
+                                delete(f.database.hostPorts[node], port)
+                        }
+                }
+        }
+
 	// update database with the changes
 	f.TxnDone()
 
@@ -1157,11 +1196,16 @@ func (f *FssClient) AttachHostPorts(hostPortLabelID string, hostPorts map[string
                                 continue
 			}
                         // Check if port is already attached
+                        portAttached := false
                         for _, v := range f.database.attachedPorts[hostPortLabelID] {
                                 if _, ok = v[hostPortID]; ok {
                                         klog.Infof("hostPort %s already attached by association %s", hostPortID, v[hostPortID])
-                                        continue
+                                        portAttached = true
+                                        break
                                 }
+                        }
+                        if portAttached == true {
+                                continue
                         }
                         klog.Infof("Add hostPortLabel %s to host %s port %s hostPortID %s", hostPortLabelID, nodeName, portName, hostPortID)
                         hostPortAssociation := HostPortAssociation{
