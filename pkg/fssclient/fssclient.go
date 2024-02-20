@@ -125,6 +125,11 @@ func (f *FssClient) GET(path string) (int, []byte, error) {
 
 // DELETE implements DELETE method
 func (f *FssClient) DELETE(path string) (int, []byte, error) {
+	return f.DELETE_with_retries(path, 0)
+}
+
+// DELETE implements DELETE method with retries
+func (f *FssClient) DELETE_with_retries(path string, nbOfRetries int) (int, []byte, error) {
 	err := f.GetAccessToken()
 	if err != nil {
 		return 0, nil, err
@@ -151,6 +156,13 @@ func (f *FssClient) DELETE(path string) (int, []byte, error) {
 	if err != nil {
 		return response.StatusCode, nil, err
 	}
+        if response.StatusCode == 401 {
+                klog.Errorf("POST API with token expiry, retry %d times", nbOfRetries)
+		f.accessTokenExpiry = time.Now()
+                if nbOfRetries < 2 {
+                        return f.DELETE_with_retries(path, nbOfRetries + 1)
+                }
+        }
 	return response.StatusCode, jsonRespData, err
 }
 
@@ -193,6 +205,8 @@ func (f *FssClient) POST_with_retries(path string, jsonReqData []byte, nbOfRetri
 		return response.StatusCode, nil, err
 	}
 	if response.StatusCode == 401 {
+		klog.Errorf("POST API with token expiry, retry %d times", nbOfRetries)
+                f.accessTokenExpiry = time.Now()
 		if nbOfRetries < 2 {
 			return f.POST_with_retries(path, jsonReqData, nbOfRetries + 1)
 		}
@@ -1030,9 +1044,11 @@ func (f *FssClient) DeleteSubnetInterface(fssWorkloadEvpnID string, fssSubnetID 
 			return err
 		}
 		if statusCode != 204 {
+                        klog.Errorf("Delete hostPortLabel %s failed with status=%d", hostPortLabelID, statusCode)
 			result = fmt.Errorf("Delete hostPortLabel failed with status=%d", statusCode)
+		} else {
+			klog.Infof("HostPortLabel %s is deleted", hostPortLabelID)
 		}
-		klog.Infof("HostPortLabel %s is deleted", hostPortLabelID)
 	} else {
 		klog.Infof("HostPortLabel %s does not exists", hostPortLabelID)
 	}
