@@ -29,9 +29,9 @@ import (
 	"time"
 
 	"github.com/golang/glog"
-	"github.com/k8snetworkplumbingwg/net-attach-def-admission-controller/pkg/controller"
-	"github.com/k8snetworkplumbingwg/net-attach-def-admission-controller/pkg/localmetrics"
-	"github.com/k8snetworkplumbingwg/net-attach-def-admission-controller/pkg/webhook"
+	"github.com/nokia/net-attach-def-admission-controller/pkg/controller"
+	"github.com/nokia/net-attach-def-admission-controller/pkg/localmetrics"
+	"github.com/nokia/net-attach-def-admission-controller/pkg/webhook"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -78,8 +78,8 @@ func main() {
 	// start metrics sever
 	startHTTPMetricServer(*metricsAddress)
 
-	// Start watching for pod creations
-	go controller.StartWatching(ignoreNamespaces)
+	//Start watching for pod creations
+	go controller.StartWatchingHA(ignoreNamespaces)
 
 	go func() {
 		// register handlers
@@ -93,7 +93,7 @@ func main() {
 			Addr: fmt.Sprintf("%s:%d", *address, *port),
 			TLSConfig: &tls.Config{
 				GetCertificate: keyPair.GetCertificateFunc(),
-				MinVersion: tls.VersionTLS12,
+				MinVersion:     tls.VersionTLS12,
 				CipherSuites: []uint16{
 					tls.TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256,
 					tls.TLS_ECDHE_ECDSA_WITH_AES_256_GCM_SHA384,

@@ -28,11 +28,11 @@ import (
 
 	"github.com/containernetworking/cni/libcni"
 	"github.com/golang/glog"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
-	"github.com/k8snetworkplumbingwg/net-attach-def-admission-controller/pkg/localmetrics"
 	networkv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
 	netattachdefClientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	"github.com/nokia/net-attach-def-admission-controller/pkg/localmetrics"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/logging"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 	api_v1 "k8s.io/api/core/v1"
 	meta_v1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	utilruntime "k8s.io/apimachinery/pkg/util/runtime"
@@ -68,6 +68,10 @@ type Controller struct {
 	queue        workqueue.RateLimitingInterface
 	informer     cache.SharedIndexInformer
 	nadClientset *netattachdefClientset.Clientset
+}
+
+// StartWatchingHA is added to skip single controller metric collection for now
+func StartWatchingHA(_ *string) {
 }
 
 // StartWatching ...  Start prepares watchers and run their controllers, then waits for process termination signals
@@ -478,7 +482,7 @@ func (c *Controller) parsePodNetworkObjectName(podnetwork string) (string, strin
 	for i := range allItems {
 		matched, _ := regexp.MatchString("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", allItems[i])
 		if !matched && len([]rune(allItems[i])) > 0 {
-			return "", "", "", logging.Errorf("parsePodNetworkObjectName: Failed to parse: one or more items did not match comma-delimited format (must consist of lower case alphanumeric characters). Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i])
+			return "", "", "", logging.Errorf(fmt.Sprintf("parsePodNetworkObjectName: Failed to parse: one or more items did not match comma-delimited format (must consist of lower case alphanumeric characters). Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i]))
 		}
 	}
 

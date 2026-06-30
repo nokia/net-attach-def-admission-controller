@@ -15,19 +15,23 @@
 package webhook
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"net/http"
 	"os"
 	"regexp"
+	"strconv"
 	"strings"
 
 	"github.com/containernetworking/cni/libcni"
 	"github.com/golang/glog"
-	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 	netv1 "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/apis/k8s.cni.cncf.io/v1"
+	netClientset "github.com/k8snetworkplumbingwg/network-attachment-definition-client/pkg/client/clientset/versioned"
+	"github.com/nokia/net-attach-def-admission-controller/pkg/datatypes"
 	"github.com/pkg/errors"
+	"gopkg.in/k8snetworkplumbingwg/multus-cni.v4/pkg/types"
 	admissionv1 "k8s.io/api/admission/v1"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
@@ -50,7 +54,8 @@ const (
 )
 
 var (
-	clientset kubernetes.Interface
+	clientset             kubernetes.Interface
+	nadAttachDefClientSet netClientset.Interface
 )
 
 // validateCNIConfig verifies following fields
@@ -82,6 +87,115 @@ func validateCNIConfig(config []byte) error {
 	return nil
 }
 
+// getInfraVlanData returns vlan ranges used by cloud infra-structure
+func getInfraVlanData() ([]int, error) {
+	var infraVlans []int
+
+	fs := os.Getenv("SRIOV_ON_NIC_1_ENABLED")
+	if fs == "" {
+		return infraVlans, nil
+	}
+	fv, err := strconv.ParseBool(fs)
+	if err != nil {
+		return infraVlans, err
+	}
+	if fv {
+		ds := os.Getenv("INFRA_VLAN_RANGE")
+		if ds == "" {
+			return infraVlans, nil
+		}
+		dv := strings.Split(ds, " ")
+		infraVlans = make([]int, len(dv))
+		for i := range dv {
+			infraVlans[i], _ = strconv.Atoi(dv[i])
+		}
+	}
+
+	return infraVlans, nil
+}
+
+// validateCNIConfigSriov verifies following fields
+// conf: 'vlan' and 'vlanTrunkString'
+func validateCNIConfigSriov(config []byte) error {
+	var c map[string]interface{}
+	if err := json.Unmarshal(config, &c); err != nil {
+		return err
+	}
+
+	if cniType, ok := c["type"]; ok {
+		if cniType == "sriov" {
+			checkInfraVlan := false
+			infraVlans, err := getInfraVlanData()
+			if err == nil && len(infraVlans) > 0 {
+				checkInfraVlan = true
+			}
+			vlan, vlanExists := c["vlan"]
+			vlanTrunk, vlanTrunkExists := c["vlan_trunk"]
+			if vlanExists && vlanTrunkExists {
+				return fmt.Errorf("both vlan and vlan_trunk fields are defined")
+			}
+			if checkInfraVlan {
+				if !vlanExists && !vlanTrunkExists {
+					return fmt.Errorf("either vlan or vlan_trunk field should be defined")
+				}
+			}
+			if vlanExists {
+				vlanString := fmt.Sprintf("%v", vlan)
+				vlanID, err1 := strconv.Atoi(vlanString)
+				if err1 != nil {
+					return fmt.Errorf("vlan field format error")
+				}
+				if checkInfraVlan {
+					for i := 0; i < len(infraVlans); i++ {
+						if infraVlans[i] == vlanID {
+							return fmt.Errorf("infrastructure vlan id %d shall not be used in vlan field", infraVlans[i])
+						}
+					}
+				}
+			}
+			if vlanTrunkExists {
+				vlanTrunkString := fmt.Sprintf("%v", vlanTrunk)
+				trunkingRanges := strings.Split(vlanTrunkString, ",")
+				for _, r := range trunkingRanges {
+					values := strings.Split(r, "-")
+					v1, err1 := strconv.Atoi(values[0])
+					v2, err2 := strconv.Atoi(values[len(values)-1])
+
+					if err1 != nil || err2 != nil {
+						return fmt.Errorf("vlan_trunk field format error")
+					}
+
+					if v1 > v2 || v1 < 1 || v2 > 4095 {
+						return fmt.Errorf("vlan_trunk field range error")
+					}
+
+					if checkInfraVlan {
+						for i := 0; i < len(infraVlans); i++ {
+							if infraVlans[i] >= v1 && infraVlans[i] <= v2 {
+								return fmt.Errorf("infrastructure vlan id %d shall not be used in vlan_trunk field", infraVlans[i])
+							}
+						}
+					}
+				}
+			}
+			if checkInfraVlan {
+				qos, qosExists := c["vlanQoS"]
+				if qosExists {
+					qosString := fmt.Sprintf("%v", qos)
+					qosID, err1 := strconv.Atoi(qosString)
+					if err1 != nil {
+						return fmt.Errorf("qos field format error")
+					}
+					if qosID != 0 {
+						return fmt.Errorf("qos %v is defined while only default qos (0) is allowed", qosID)
+					}
+				}
+			}
+		}
+	}
+	return nil
+}
+
 // preprocessCNIConfig process CNI config bytes as following (that multus does too)
 // - if 'name' is missing, 'name' is filled
 func preprocessCNIConfig(name string, config []byte) ([]byte, error) {
@@ -101,23 +215,24 @@ func isJSON(s string) bool {
 	return json.Unmarshal([]byte(s), &js) == nil
 }
 
-func validateNetworkAttachmentDefinition(netAttachDef netv1.NetworkAttachmentDefinition) (bool, error) {
+func validateNetworkAttachmentDefinition(operation admissionv1.Operation, netAttachDef netv1.NetworkAttachmentDefinition, oldNad netv1.NetworkAttachmentDefinition) (bool, bool, error) {
 	nameRegex := `^[a-z-1-9]([-a-z0-9]*[a-z0-9])?$`
 	isNameCorrect, err := regexp.MatchString(nameRegex, netAttachDef.GetName())
 	if !isNameCorrect {
 		err := errors.New("net-attach-def name is invalid")
 		glog.Info(err)
-		return false, err
+		return false, false, err
 	}
 	if err != nil {
 		err := errors.New("error validating name")
 		glog.Error(err)
-		return false, err
+		return false, false, err
 	}
 
-	glog.Infof("validating network config spec: %s", netAttachDef.Spec.Config)
+	glog.V(5).Infof("validating NAD: %+v", netAttachDef)
 
 	var confBytes []byte
+	mutationRequired := false
 	if netAttachDef.Spec.Config != "" {
 		// try to unmarshal config into NetworkConfig or NetworkConfigList
 		//  using actual code from libcni - if succesful, it means that the config
@@ -125,17 +240,22 @@ func validateNetworkAttachmentDefinition(netAttachDef netv1.NetworkAttachmentDef
 		if !isJSON(netAttachDef.Spec.Config) {
 			err := errors.New("configuration string is not in JSON format")
 			glog.Info(err)
-			return false, err
+			return false, false, err
 		}
 
 		confBytes, err = preprocessCNIConfig(netAttachDef.GetName(), []byte(netAttachDef.Spec.Config))
 		if err != nil {
 			err := errors.New("invalid json")
-			return false, err
+			return false, false, err
 		}
 		if err := validateCNIConfig(confBytes); err != nil {
 			err := errors.New("invalid config")
-			return false, err
+			return false, false, err
+		}
+		// additional validation on sriov type
+		if err := validateCNIConfigSriov(confBytes); err != nil {
+			err := errors.New(err.Error())
+			return false, false, err
 		}
 		_, err = libcni.ConfListFromBytes(confBytes)
 		if err != nil {
@@ -144,16 +264,303 @@ func validateNetworkAttachmentDefinition(netAttachDef netv1.NetworkAttachmentDef
 			if err != nil {
 				glog.Infof("spec is not a valid network config: %s", confBytes)
 				err := errors.New("invalid config")
-				return false, err
+				return false, false, err
 			}
 		}
-
+		// validate for VLAN Operator
+		mutationRequired, err = validateForVlanOperator(operation, oldNad, netAttachDef)
+		if err != nil {
+			return false, false, err
+		}
+		// validate for Fabric Operator
+		err = validateForFabricOperator(operation, oldNad, netAttachDef)
+		if err != nil {
+			return false, false, err
+		}
 	} else {
 		glog.Infof("Allowing empty spec.config")
 	}
 
 	glog.Infof("AdmissionReview request allowed: Network Attachment Definition '%s' is valid", confBytes)
-	return true, nil
+	return true, mutationRequired, nil
+}
+
+func isVlanOperatorRequired(netAttachDef netv1.NetworkAttachmentDefinition) (datatypes.NetConf, bool) {
+	var netConf datatypes.NetConf
+
+	// Check nodeSelector
+	annotationsMap := netAttachDef.GetAnnotations()
+	ns, ok := annotationsMap[datatypes.NodeSelectorKey]
+	if !ok || len(ns) == 0 {
+		return netConf, false
+	}
+
+	// Check CNI type
+	var c map[string]interface{}
+	json.Unmarshal([]byte(netAttachDef.Spec.Config), &c)
+
+	// Check if CNI config has plugin
+	if p, ok := c["plugins"]; ok {
+		plugins := p.([]interface{})
+		for _, v := range plugins {
+			plugin := v.(map[string]interface{})
+			if plugin["type"] == "ipvlan" {
+				_, vlanExists := plugin["vlan"]
+				_, masterExists := plugin["master"]
+				if masterExists && vlanExists {
+					confBytes, _ := json.Marshal(v)
+					err := json.Unmarshal(confBytes, &netConf)
+					if err == nil {
+						return netConf, true
+					}
+				}
+			}
+		}
+	} else {
+		if c["type"] == "ipvlan" {
+			_, vlanExists := c["vlan"]
+			_, masterExists := c["master"]
+			if masterExists && vlanExists {
+				err := json.Unmarshal([]byte(netAttachDef.Spec.Config), &netConf)
+				if err == nil {
+					return netConf, true
+				}
+			}
+		}
+	}
+
+	return netConf, false
+}
+
+func shouldTriggerMutation(netConf datatypes.NetConf) (bool, error) {
+	if netConf.Vlan < 1 || netConf.Vlan > 4095 {
+		return false, fmt.Errorf("Nokia Proprietary IPVLAN vlan field has invalid value. Valid range 1..4095")
+	}
+	if netConf.Master == "tenant-bond" || netConf.Master == "provider-bond" {
+		return true, nil
+	}
+	if !strings.HasPrefix(netConf.Master, "tenant.") && !strings.HasPrefix(netConf.Master, "provider.") {
+		return false, fmt.Errorf("Nokia Proprietary IPVLAN master field has invalid value. Valid value after mutation is tenant.vlan or provider.vlan")
+	}
+	//check if mutation has already been done
+	if strings.HasPrefix(netConf.Master, "tenant.") || strings.HasPrefix(netConf.Master, "provider.") {
+		m := strings.Split(netConf.Master, ".")
+		v, err := strconv.Atoi(m[1])
+		if err != nil || v != netConf.Vlan {
+			return false, fmt.Errorf("IPVLAN master field %s is incorrect", netConf.Master)
+		}
+	}
+	return false, nil
+}
+
+// validateForVlanOperator verifies following fields
+// conf: 'master' and 'vlan'
+// annotatoin: 'nodeSelector'
+// also check if mutation is needed
+// return mutationRequired, and err for ipvlan validation error
+func validateForVlanOperator(operation admissionv1.Operation, oldNad, netAttachDef netv1.NetworkAttachmentDefinition) (bool, error) {
+	//skip checking if vlan operator is not required
+	netConf, required := isVlanOperatorRequired(netAttachDef)
+	if !required {
+		return false, nil
+	}
+
+	mutationRequired, err := shouldTriggerMutation(netConf)
+	if err != nil {
+		return false, fmt.Errorf("Failed to validate IPVLAN config: %s", err.Error())
+	}
+
+	//NAD update for ipvlan with master and vlan field change is not allowed
+	if operation == "UPDATE" {
+		oldConf, mutated := isVlanOperatorRequired(oldNad)
+		if mutated {
+			if netConf.Vlan != oldConf.Vlan {
+				return false, fmt.Errorf("Nokia Proprietary IPVLAN vlan field can not change: %d->%d", oldConf.Vlan, netConf.Vlan)
+			}
+			m1 := strings.Split(oldConf.Master, ".")
+			if !strings.HasPrefix(netConf.Master, m1[0]) {
+				return false, fmt.Errorf("Nokia Proprietary IPVLAN device in master field can not change: %s", oldConf.Master)
+			}
+		}
+	}
+
+	return mutationRequired, nil
+}
+
+func isFabricOperatorRequired(netAttachDef netv1.NetworkAttachmentDefinition) bool {
+	// Check nodeSelector
+	annotationsMap := netAttachDef.GetAnnotations()
+	ns, ok := annotationsMap[datatypes.NodeSelectorKey]
+	if !ok || len(ns) == 0 {
+		return false
+	}
+	// Check extProjectName and extNetworkName
+	project, ok1 := annotationsMap[datatypes.ExtProjectNameKey]
+	network, ok2 := annotationsMap[datatypes.ExtNetworkNameKey]
+	if ok1 && len(project) > 0 && ok2 && len(network) > 0 {
+		return true
+	}
+	// Check SRIOV overlays
+	sriovOverlays, ok3 := annotationsMap[datatypes.SriovOverlaysKey]
+	if ok3 && len(sriovOverlays) > 0 {
+		return true
+	}
+	return false
+}
+
+// validateForFabricOperator verifies following fields
+// annotatoin: 'nodeSelector', 'extNetworkName', 'extProjectName' and 'resourceName'
+// conf: 'type', 'vlan' and 'vlan_trunk'
+// return err for validation error
+func validateForFabricOperator(operation admissionv1.Operation, oldNad, netAttachDef netv1.NetworkAttachmentDefinition) error {
+	//skip checking if Fabric operator is not required
+	if !isFabricOperatorRequired(netAttachDef) && !isFabricOperatorRequired(oldNad) {
+		return nil
+	}
+
+	// Check NAD for invalid format
+	var thisConf datatypes.NetConf
+	var err error
+	if operation == "CREATE" {
+		thisConf, _, err = datatypes.ShouldTriggerTopoAction(&netAttachDef)
+		if err != nil {
+			return err
+		}
+
+	} else {
+		if operation == "UPDATE" {
+			_, thisConf, err = datatypes.ShouldTriggerTopoUpdate(&oldNad, &netAttachDef)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	// Check NAD for vlan sharing
+	if !isFabricOperatorRequired(netAttachDef) {
+		return nil
+	}
+	name := netAttachDef.ObjectMeta.Name
+	namespace := netAttachDef.ObjectMeta.Namespace
+	ns, _ := netAttachDef.GetAnnotations()[datatypes.NodeSelectorKey]
+	project, _ := netAttachDef.GetAnnotations()[datatypes.ExtProjectNameKey]
+	network, _ := netAttachDef.GetAnnotations()[datatypes.ExtNetworkNameKey]
+
+	nadList, err := nadAttachDefClientSet.K8sCniCncfIoV1().NetworkAttachmentDefinitions("").List(context.TODO(), metav1.ListOptions{})
+	if err != nil {
+		return err
+	}
+	for _, nad := range nadList.Items {
+		othername := nad.ObjectMeta.Name
+		if othername == name {
+			continue
+		}
+		if !isFabricOperatorRequired(nad) {
+			continue
+		}
+		otherConf, _, _ := datatypes.ShouldTriggerTopoAction(&nad)
+		if thisConf.Type != otherConf.Type {
+			continue
+		}
+		if thisConf.Vlan != otherConf.Vlan {
+			continue
+		}
+		vlanMode := true
+		switch thisConf.Type {
+		case "ipvlan":
+			{
+				// Check if using the same NIC bond
+				if strings.HasPrefix(thisConf.Master, "tenant") && !strings.HasPrefix(otherConf.Master, "tenant") {
+					continue
+				}
+				if strings.HasPrefix(thisConf.Master, "provider") && !strings.HasPrefix(otherConf.Master, "provider") {
+					continue
+				}
+			}
+		case "sriov":
+			{
+				// Check if using the same resource pool
+				thisSriovResource, _ := netAttachDef.GetAnnotations()[datatypes.SriovResourceKey]
+				otherSriovResource, _ := nad.GetAnnotations()[datatypes.SriovResourceKey]
+				if thisSriovResource != otherSriovResource {
+					errString := fmt.Sprintf("%s/%s and %s/%s has the same vlan (%d) but different resourceName (%s vs %s)",
+						namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, thisConf.Vlan, thisSriovResource, otherSriovResource)
+					return errors.New(errString)
+				}
+				if len(thisConf.VlanTrunk) > 0 {
+					if thisConf.VlanTrunk != otherConf.VlanTrunk {
+						continue
+					}
+					vlanMode = false
+				} else if thisConf.Vlan == 0 {
+					// Ignore untagged vlan
+					continue
+				}
+			}
+		}
+		if vlanMode {
+			otherProject, _ := nad.GetAnnotations()[datatypes.ExtProjectNameKey]
+			otherNetwork, _ := nad.GetAnnotations()[datatypes.ExtNetworkNameKey]
+			if project != otherProject || network != otherNetwork {
+				errString := fmt.Sprintf("%s/%s and %s/%s has the same vlan (%d) but different extProject/extNetwork (%s/%s vs %s/%s)",
+					namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, thisConf.Vlan, project, network, otherProject, otherNetwork)
+				return errors.New(errString)
+			}
+		} else {
+			thisSriovOverlays, _ := netAttachDef.GetAnnotations()[datatypes.SriovOverlaysKey]
+			otherSriovOverlays, _ := nad.GetAnnotations()[datatypes.SriovOverlaysKey]
+			if thisSriovOverlays != otherSriovOverlays {
+				errString := fmt.Sprintf("%s/%s and %s/%s has the same vlanTrunk (%s) but different Overlays (%s vs %s)",
+					namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, thisConf.VlanTrunk, thisSriovOverlays, otherSriovOverlays)
+				return errors.New(errString)
+			}
+		}
+		otherNs, _ := nad.GetAnnotations()[datatypes.NodeSelectorKey]
+		if ns != otherNs {
+			errString := fmt.Sprintf("%s/%s and %s/%s has the same vlan toplogy but different nodeSelector (%s vs %s)",
+				namespace, name, nad.ObjectMeta.Namespace, nad.ObjectMeta.Name, ns, otherNs)
+			return errors.New(errString)
+		}
+	}
+
+	return nil
+}
+
+func mutateNetworkAttachmentDefinition(netAttachDef netv1.NetworkAttachmentDefinition, patch []jsonPatchOperation) []jsonPatchOperation {
+	var c map[string]interface{}
+	json.Unmarshal([]byte(netAttachDef.Spec.Config), &c)
+
+	// Check if CNI config has plugin
+	if p, ok := c["plugins"]; ok {
+		plugins := p.([]interface{})
+		for _, v := range plugins {
+			plugin := v.(map[string]interface{})
+			if plugin["type"] == "ipvlan" {
+				master := plugin["master"].(string)
+				m := strings.Split(master, "-")
+				vlan := fmt.Sprintf("%v", plugin["vlan"])
+				plugin["master"] = m[0] + "." + vlan
+				break
+			}
+		}
+	} else {
+		master := c["master"].(string)
+		m := strings.Split(master, "-")
+		vlan := fmt.Sprintf("%v", c["vlan"])
+		c["master"] = m[0] + "." + vlan
+	}
+
+	configBytes, _ := json.Marshal(c)
+	netAttachDef.Spec.Config = string(configBytes)
+
+	glog.V(5).Infof("Mutate: Network Attachment Definition %+v", netAttachDef.Spec.Config)
+
+	patch = append(patch, jsonPatchOperation{
+		Operation: "replace",
+		Path:      "/spec/config",
+		Value:     netAttachDef.Spec.Config,
+	})
+	return patch
 }
 
 func prepareAdmissionReviewResponse(allowed bool, message string, ar *admissionv1.AdmissionReview) error {
@@ -340,7 +747,7 @@ func parsePodNetworkObjectName(podnetwork string) (string, string, string, error
 	for i := range allItems {
 		matched, _ := regexp.MatchString("^[a-z0-9]([-a-z0-9]*[a-z0-9])?$", allItems[i])
 		if !matched && len([]rune(allItems[i])) > 0 {
-			return "", "", "", fmt.Errorf("Failed to parse: one or more items did not match comma-delimited format (must consist of lower case alphanumeric characters). Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i])
+			return "", "", "", fmt.Errorf(fmt.Sprintf("Failed to parse: one or more items did not match comma-delimited format (must consist of lower case alphanumeric characters). Must start and end with an alphanumeric character), mismatch @ '%v'", allItems[i]))
 		}
 	}
 
@@ -348,11 +755,15 @@ func parsePodNetworkObjectName(podnetwork string) (string, string, string, error
 	return netNsName, networkName, netIfName, nil
 }
 
-func deserializeNetworkAttachmentDefinition(ar *admissionv1.AdmissionReview) (netv1.NetworkAttachmentDefinition, error) {
-	// unmarshal NetworkAttachmentDefinition from AdmissionReview request
+func deserializeNetworkAttachmentDefinition(ar *admissionv1.AdmissionReview) (netv1.NetworkAttachmentDefinition, netv1.NetworkAttachmentDefinition, error) {
+	/* unmarshal NetworkAttachmentDefinition from AdmissionReview request */
 	netAttachDef := netv1.NetworkAttachmentDefinition{}
+	oldNad := netv1.NetworkAttachmentDefinition{}
 	err := json.Unmarshal(ar.Request.Object.Raw, &netAttachDef)
-	return netAttachDef, err
+	if err == nil && ar.Request.Operation == "UPDATE" {
+		err = json.Unmarshal(ar.Request.OldObject.Raw, &oldNad)
+	}
+	return netAttachDef, oldNad, err
 }
 
 func handleValidationError(w http.ResponseWriter, ar *admissionv1.AdmissionReview, orgErr error) {
@@ -406,14 +817,14 @@ func ValidateHandler(w http.ResponseWriter, req *http.Request) {
 		return
 	}
 
-	netAttachDef, err := deserializeNetworkAttachmentDefinition(ar)
+	netAttachDef, oldNad, err := deserializeNetworkAttachmentDefinition(ar)
 	if err != nil {
 		handleValidationError(w, ar, err)
 		return
 	}
 
-	// perform actual object validation
-	allowed, err := validateNetworkAttachmentDefinition(netAttachDef)
+	/* perform actual object validation */
+	allowed, mutationRequired, err := validateNetworkAttachmentDefinition(ar.Request.Operation, netAttachDef, oldNad)
 	if err != nil {
 		handleValidationError(w, ar, err)
 		return
@@ -425,6 +836,16 @@ func ValidateHandler(w http.ResponseWriter, req *http.Request) {
 		glog.Error(err)
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
+	}
+	if allowed && mutationRequired {
+		var patch []jsonPatchOperation
+		patch = mutateNetworkAttachmentDefinition(netAttachDef, patch)
+		ar.Response.Patch, _ = json.Marshal(patch)
+		ar.Response.PatchType = func() *admissionv1.PatchType {
+			pt := admissionv1.PatchTypeJSONPatch
+			return &pt
+		}()
+
 	}
 	writeResponse(w, ar)
 }
@@ -441,4 +862,9 @@ func SetupInClusterClient() {
 	if err != nil {
 		glog.Fatal(err)
 	}
+	nadAttachDefClientSet, err = netClientset.NewForConfig(config)
+	if err != nil {
+		glog.Fatal(err)
+	}
+
 }
